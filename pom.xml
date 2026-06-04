@@ -9,9 +9,9 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.talkking</groupId>
-	<artifactId>messenger</artifactId>
+	<artifactId>talkking-chat</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>messenger</name>
+	<name>talkking-chat</name>
 	<description/>
 	<url/>
 	<licenses>
