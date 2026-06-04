@@ -1,0 +1,30 @@
+# 빌드 결과물 및 컴파일된 파일
+/build/
+/out/
+.gradle/
+build/
+
+# 로컬 개발용 환경 변수 및 설정 파일 (민감 정보 보호)
+.env
+.env.local
+.env.*.local
+src/main/resources/application-local.properties
+src/main/resources/application-local.yml
+
+# IDE 및 도구 설정 파일
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+
+# 로그 파일
+*.log
+logs/
+
+# 시스템 및 OS 임시 파일
+.DS_Store
+Thumbs.db
