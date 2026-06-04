@@ -29,6 +29,7 @@ jobs:
           cache: maven
 
       - name: Build and test (chat)
+        working-directory: talkking-chat
         run: mvn package -pl talkking-chat -am
 
       # ↓ AWS 계정 받으면 주석 해제
@@ -73,6 +74,7 @@ jobs:
           cache: maven
 
       - name: Build and test (notification)
+        working-directory: talkking-notification
         run: mvn package -pl talkking-notification -am
 
       # ↓ AWS 계정 받으면 주석 해제
