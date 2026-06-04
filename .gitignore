@@ -39,3 +39,14 @@ logs/
 # === 시스템 임시 파일 ===
 .DS_Store
 Thumbs.db
+
+.metadata/                  # 이클립스/STS 워크스페이스 상위 폴더 오염 방지 [cite: 102, 146]
+
+# --- 인프라/보안 실수 유입 방지 (테라폼 담당자 협업용) ---
+*.tfvars                    # 테라폼 비밀 변수 파일 [cite: 148]
+*.tfstate                   # 테라폼 상태 파일 [cite: 28, 148]
+*.tfstate.backup
+.terraform/                 # 테라폼 초기화 캐시 디렉토리 [cite: 28, 148]
+.terraform.lock.hcl
+*.pem                       # AWS 접속용 비밀키 실수 유입 원천 차단 [cite: 148]
+/.metadata/

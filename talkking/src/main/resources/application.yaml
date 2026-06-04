@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: messenger
+    
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, metrics
+  endpoint:
+    health:
+      show-details: always
+#  metrics:
+#    export:
+#      prometheus:
+#        enabled: true
+    tags:
+      application: ${spring.application.name}
