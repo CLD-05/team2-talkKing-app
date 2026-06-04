@@ -1,17 +1,27 @@
-# 빌드 결과물 및 컴파일된 파일
+# === Gradle & Java 빌드 결과물 ===
 /build/
 /out/
 .gradle/
 build/
+bin/
 
-# 로컬 개발용 환경 변수 및 설정 파일 (민감 정보 보호)
+# === 로컬 개발 전용 환경 설정 (하드코딩 방지) ===
 .env
 .env.local
 .env.*.local
 src/main/resources/application-local.properties
 src/main/resources/application-local.yml
+src/main/resources/application-local.yaml
 
-# IDE 및 도구 설정 파일
+# === 도커(Docker) 로컬 빌드 캐시 ===
+.docker/
+docker-compose.override.yml
+
+# === 혹시 모를 프론트엔드 결합 대비 ===
+node_modules/
+npm-debug.log*
+
+# === IDE 및 툴 세팅 ===
 .idea/
 *.iml
 *.ipr
@@ -21,10 +31,11 @@ src/main/resources/application-local.yml
 .classpath
 .project
 
-# 로그 파일
+# === 로그 파일 관리 ===
 *.log
 logs/
+/logs/
 
-# 시스템 및 OS 임시 파일
+# === 시스템 임시 파일 ===
 .DS_Store
 Thumbs.db
