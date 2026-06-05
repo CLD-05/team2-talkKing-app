@@ -1,0 +1,10 @@
+server:
+  port: 8081 # 🎯 채팅 서버(8080)와 충돌나지 않도록 독립된 포트 지정
+
+spring:
+  # 카프카 연동을 위한 기본 환경 정보 선언
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: notification-group
+      auto-offset-reset: earliest
