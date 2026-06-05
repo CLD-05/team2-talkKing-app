@@ -1,1 +1,25 @@
 # Chat Config
+spring:
+  application:
+    name: talkking-chat
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/YOUR_DB_NAME?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: root
+    password: YOUR_PASSWORD
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        
+  spring:
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      cluster:
+        nodes: ${SPRING_DATA_REDIS_CLUSTER_NODES:}
