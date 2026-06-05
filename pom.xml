@@ -9,9 +9,9 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.talkking</groupId>
-	<artifactId>messenger</artifactId>
+	<artifactId>talkking-chat</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>messenger</name>
+	<name>talkking-chat</name>
 	<description/>
 	<url/>
 	<licenses>
@@ -54,6 +54,13 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+
+		<!-- Test용 인메모리 DB -->
+    <dependency>
+    <groupId>com.h2database</groupId>
+    <artifactId>h2</artifactId>
+    <scope>test</scope>
+    </dependency>
 	</dependencies>
 
 	<build>

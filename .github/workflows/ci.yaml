@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+env:
+  AWS_REGION: ap-northeast-2
+
+jobs:
+  # ── chat 모듈 ──────────────────────────────
+  build-chat:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build and test (chat)
+        working-directory: talkking-chat
+        run: mvn package
+
+      # ↓ AWS 계정 받으면 주석 해제
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+      #     aws-region: ${{ env.AWS_REGION }}
+
+      # - name: Login to ECR
+      #   id: login-ecr
+      #   uses: aws-actions/amazon-ecr-login@v2
+
+      # - name: Build and push chat image
+      #   env:
+      #     ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      #     IMAGE_TAG: ${{ github.sha }}
+      #   run: |
+      #     docker build \
+      #       --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+      #       --build-arg GIT_SHA=${{ github.sha }} \
+      #       -f talkking-chat/Dockerfile \
+      #       -t $ECR_REGISTRY/team2-talkking-chat:$IMAGE_TAG .
+      #     docker push $ECR_REGISTRY/team2-talkking-chat:$IMAGE_TAG
+
+  # ── notification 모듈 ──────────────────────
+  build-notification:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build and test (notification)
+        working-directory: talkking-notification
+        run: mvn package
+
+      # ↓ AWS 계정 받으면 주석 해제
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+      #     aws-region: ${{ env.AWS_REGION }}
+
+      # - name: Login to ECR
+      #   id: login-ecr
+      #   uses: aws-actions/amazon-ecr-login@v2
+
+      # - name: Build and push notification image
+      #   env:
+      #     ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      #     IMAGE_TAG: ${{ github.sha }}
+      #   run: |
+      #     docker build \
+      #       --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+      #       --build-arg GIT_SHA=${{ github.sha }} \
+      #       -f talkking-notification/Dockerfile \
+      #       -t $ECR_REGISTRY/team2-talkking-notification:$IMAGE_TAG .
+      #     docker push $ECR_REGISTRY/team2-talkking-notification:$IMAGE_TAG
+
+  # ↓ AWS 계정 받으면 주석 해제
+  # update-config:
+  #   needs: [build-chat, build-notification]
+  #   if: github.ref == 'refs/heads/dev'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout config repo
+  #       uses: actions/checkout@v4
+  #       with:
+  #         repository: ${{ github.repository_owner }}/team2-talkKing-config
+  #         token: ${{ secrets.CONFIG_REPO_TOKEN }}
+  #     - name: Update image tags
+  #       env:
+  #         IMAGE_TAG: ${{ github.sha }}
+  #       run: |
+  #         cd overlays/dev
+  #         kustomize edit set image talkking-chat=$ECR_REGISTRY/team2-talkking-chat:$IMAGE_TAG
+  #         kustomize edit set image talkking-notification=$ECR_REGISTRY/team2-talkking-notification:$IMAGE_TAG
+  #         git config user.name "github-actions"
+  #         git config user.email "actions@github.com"
+  #         git commit -am "chore: update image tags to $IMAGE_TAG"
+  #         git push
