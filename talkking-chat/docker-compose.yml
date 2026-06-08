@@ -1,8 +1,25 @@
 version: '3.8'
+
 services:
-  talkking-redis:
-    image: redis:7.2-alpine
-    container_name: talkking-redis
+  # 1. 초경량 RabbitMQ 설정
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: chat-rabbitmq
+    ports:
+      - "5672:5672"       # 스프링 부트 백엔드가 접속할 포트
+      - "15672:15672"     # 우리가 눈으로 확인할 웹 대시보드 포트
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  # 2. 토큰 및 세션 관리용 가벼운 Redis 설정
+  redis:
+    image: redis:7-alpine
+    container_name: chat-redis
     ports:
       - "6379:6379"
-    restart: always
+
+volumes:
+  rabbitmq_data:
