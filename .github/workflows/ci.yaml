@@ -9,8 +9,8 @@ on:
 env:
   AWS_REGION: ap-northeast-2
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
-  ECR_REPOSITORY_CHAT: team2-talkking-chat
-  ECR_REPOSITORY_NOTIFICATION: team2-talkking-notification
+  ECR_REPOSITORY_CHAT: team2-talkKing-chat
+  ECR_REPOSITORY_NOTIFICATION: team2-talkKing-notification
 
 jobs:
   # ── chat 모듈 ──────────────────────────────
@@ -32,7 +32,7 @@ jobs:
           cache: maven
 
       - name: Build and test (chat)
-        working-directory: talkking-chat
+        working-directory: talkKing-chat
         run: mvn package
 
   # ── notification 모듈 ──────────────────────
@@ -54,7 +54,7 @@ jobs:
           cache: maven
 
       - name: Build and test (notification)
-        working-directory: talkking-notification
+        working-directory: talkKing-notification
         run: mvn package
 
   # ── Docker 이미지 빌드 및 ECR 푸시 ──────────────────────
@@ -89,7 +89,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./talkking-chat/Dockerfile
+          file: ./talkKing-chat/Dockerfile
           push: true
           tags: |
             ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_CHAT }}:${{ github.sha }}
@@ -105,7 +105,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./talkking-notification/Dockerfile
+          file: ./talkKing-notification/Dockerfile
           push: true
           tags: |
             ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_NOTIFICATION }}:${{ github.sha }}
@@ -148,8 +148,8 @@ jobs:
           
           # 이미지 태그 업데이트
           kustomize edit set image \
-            "talkking-chat=$ECR_REGISTRY/$ECR_REPOSITORY_CHAT:$IMAGE_TAG" \
-            "talkking-notification=$ECR_REGISTRY/$ECR_REPOSITORY_NOTIFICATION:$IMAGE_TAG"
+            "talkKing-chat=$ECR_REGISTRY/$ECR_REPOSITORY_CHAT:$IMAGE_TAG" \
+            "talkKing-notification=$ECR_REGISTRY/$ECR_REPOSITORY_NOTIFICATION:$IMAGE_TAG"
           
           echo "Updated kustomization.yaml"
 
