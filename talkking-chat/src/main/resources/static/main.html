@@ -752,11 +752,32 @@ async function inviteGroupMembers() {
 }
 
 /**
- * 🔔 화면 우측 상단에 카카오톡 스타일 토스트 알림을 레이아웃 씹힘 없이 동적 생성하는 함수
+ * 🔔 [업그레이드] 브라우저 내부 토스트 + 윈도우 시스템 배경 알림 통합 엔진
  */
 function showNotificationToast(message) {
-    console.log("📢 [토스트 엔진 가동]: 화면에 팝업을 그리기 시작합니다 ->", message);
+    console.log("📢 [알림 엔진 가동]:", message);
 
+    // ==========================================
+    // 🖥️ 1. OS 바탕화면 시스템 알림 (브라우저가 가려져도 작동)
+    // ==========================================
+    if (Notification.permission === "granted") {
+        // 권한이 이미 허용된 경우 윈도우 알림 발송
+        new Notification("TalkKing Messenger", {
+            body: message,
+            icon: "/favicon.ico" // 필요시 아이콘 경로 지정 (생략 가능)
+        });
+    } else if (Notification.permission !== "denied") {
+        // 권한 요청이 아직 안 된 경우 최초 1회 승인 요청
+        Notification.requestPermission().then(permission => {
+            if (permission === "granted") {
+                new Notification("TalkKing Messenger", { body: message });
+            }
+        });
+    }
+
+    // ==========================================
+    // 🎨 2. 기존 브라우저 내부 웹 토스트 UI (유지)
+    // ==========================================
     let container = document.getElementById('toast-container');
     if (!container) {
         container = document.createElement('div');
@@ -777,11 +798,10 @@ function showNotificationToast(message) {
 
     container.appendChild(toast);
 
-    // 4초 후 우측 상단에서 부드럽게 위로 소멸되도록 애니메이션 매핑 싱크 보정
     setTimeout(() => {
         toast.style.transition = 'all 0.4s ease-in-out';
         toast.style.opacity = '0';
-        toast.style.transform = 'translateY(-20px)'; /* 👈 자연스럽게 위로 올라가며 사라지도록 설정 */
+        toast.style.transform = 'translateY(-20px)';
         
         setTimeout(() => {
             if (toast.parentNode) {
@@ -789,6 +809,11 @@ function showNotificationToast(message) {
             }
         }, 400);
     }, 4000);
+}
+
+// 🎯 [최초 가동 락 해제] 페이지 켜지자마자 사용자에게 윈도우 알림 권한을 미리 물어봅니다.
+if (window.Notification) {
+    Notification.requestPermission();
 }
 </script>
 </body>
