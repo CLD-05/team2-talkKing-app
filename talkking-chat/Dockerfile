@@ -1,21 +1,9 @@
-# 1단계: 빌드 (루트 pom.xml 기준으로 전체 빌드)
 FROM maven:3.9-eclipse-temurin-17 AS builder
 WORKDIR /app
 
-# 루트 pom.xml + 모듈 pom.xml 먼저 캐시
-COPY pom.xml .
-COPY talkking-chat/pom.xml talkking-chat/
-COPY talkking-notification/pom.xml talkking-notification/
-RUN mvn dependency:go-offline -B
+COPY . .
+RUN mvn clean package
 
-# 모든 소스 복사 (chat과 notification 모두)
-COPY talkking-chat/src talkking-chat/src
-COPY talkking-notification/src talkking-notification/src
-
-# chat 모듈만 빌드 (의존성 자동 처리)
-RUN mvn clean package -pl talkking-chat -am
-
-# 2단계: 실행
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
