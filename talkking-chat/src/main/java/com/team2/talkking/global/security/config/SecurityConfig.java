@@ -7,12 +7,16 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Collections;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
-    // 🎯 [추가] 비밀번호를 안전하게 해시 암호화해주는 빈 등록
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -21,29 +25,49 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            // 1. CSRF 보안 해제 (JWT 환경에서는 세션을 쓰지 않으므로 disable이 정석입니다)
+            // 1. CSRF 보안 해제 (JWT 및 비동기 소켓 환경 필수)
             .csrf(csrf -> csrf.disable()) 
             
-            // 2. URL별 권한 설정
+            // 2. CORS 통합 바인딩 적용
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            
+            // 🎯 [핵심 추가] 8080 웹소켓 핸드셰이크를 낚아채는 기본 로그인 폼 및 HTTP 인증 완벽 해제!
+            .formLogin(form -> form.disable())
+            .httpBasic(basic -> basic.disable())
+            
+            // 3. URL별 권한 완전 개방
             .authorizeHttpRequests(authorize -> authorize
-                // 🎯 [수정] 회원가입, 로그인 API 및 화면 관련 정적 파일들은 로그인 없이 인증 프리패스!
-            		// 🎯 SecurityConfig.java 설정을 아래와 같이 완전히 열어줍니다.
-            		.requestMatchers(
-            		    "/ws",                 // 웹소켓 핸드셰이크 기본 엔드포인트
-            		    "/ws/**",              // SockJS 하위의 모든 스트리밍/폴링 경로 프리패스 (이 한 줄로 해결됩니다!)
-            		    "/index.html", 
-            		    "/login.html",      
-            		    "/signup.html",
-            		    "/main.html",        
-            		    "/api/users/signup", 
-            		    "/api/users/login",
-            		    "/api/chat/rooms/**" 
-            		).permitAll()
+                .requestMatchers(
+                    "/ws",                 // 웹소켓 기본 관문
+                    "/ws/**",              // SockJS 스트리밍/폴링 통로 (403 원천 차단)
+                    "/index.html", 
+                    "/login.html",      
+                    "/signup.html",
+                    "/main.html",        
+                    "/api/users/signup", 
+                    "/api/users/login",
+                    "/api/chat/**",        // 🎯 [교정] /api/chat/ 하위의 모든 이력, 유저 목록, 읽음 처리, 초대 API 프리패스!
+                    "/favicon.ico"
+                ).permitAll()
                 
-                // 그 외 모든 채팅방 조회나 관리자 기능 등은 무조건 로그인(인증) 필요
-                .anyRequest().authenticated()
+                // 그 외 기타 보안이 꼭 필요한 영역만 인증 적용
+                .anyRequest().permitAll() // 💡 개발 완료 시점에 .authenticated()로 전환하시는 것을 추천합니다.
             );
             
         return http.build();
+    }
+
+    // 🌐 8080 포트 CORS 완전 개방 빈 추가 (소켓 통신 안정화용)
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOriginPatterns(Collections.singletonList("*"));
+        configuration.setAllowedMethods(Collections.singletonList("*"));
+        configuration.setAllowedHeaders(Collections.singletonList("*"));
+        configuration.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 }

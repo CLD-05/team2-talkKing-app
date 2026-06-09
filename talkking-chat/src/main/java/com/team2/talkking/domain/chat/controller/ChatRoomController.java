@@ -5,14 +5,17 @@ import com.team2.talkking.domain.chat.entity.Message;
 import com.team2.talkking.domain.chat.repository.MessageRepository;
 import com.team2.talkking.domain.chat.service.ChatRoomService;
 import com.team2.talkking.domain.chat.service.ChatRoomService.UserSearchResponse;
+import com.team2.talkking.domain.chat.service.ChatService;
 import com.team2.talkking.global.jwt.JwtProvider;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional; // 🎯 주입 확인
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequiredArgsConstructor
@@ -23,6 +26,7 @@ public class ChatRoomController {
     private final JwtProvider jwtProvider;
     private final UserChatRoomRepository userChatRoomRepository;
     private final MessageRepository messageRepository;
+    private final ChatService chatService;
 
     /**
      * 🔍 닉네임 또는 고유 ID로 유저 하이브리드 검색 (나 자신은 제외)
@@ -40,21 +44,33 @@ public class ChatRoomController {
 
     /**
      * ➕ 그룹 채팅방 개설 및 다중 초대
+     * 🎯 [보정] 컨트롤러 진입점에 @Transactional을 선언하여 서비스 호출과 알림 레이어를 하나의 트랜잭션 바운더리로 묶습니다.
      */
     @PostMapping
+    @Transactional
     public ResponseEntity<Long> createRoom(
             @RequestHeader("Authorization") String bearerToken,
             @RequestBody CreateRoomRequest request) {
         
         String token = bearerToken.substring(7);
         Long creatorId = jwtProvider.getUserId(token);
-        Long roomId = chatRoomService.createGroupChatRoom(request.getRoomTitle(), creatorId, request.getInvitedUserIds());
+        
+        // 1. DTO 유저 ID 강제 Long 타입 래핑 및 박스갈이 처리 (무결성 최적화)
+        List<Long> cleanInvitedUserIds = request.getInvitedUserIds().stream()
+                .map(id -> Long.parseLong(String.valueOf(id)))
+                .collect(Collectors.toList());
+
+        // 2. 단톡방 개설 및 DB 저장 진행 (트랜잭션 유지 상태)
+        Long roomId = chatRoomService.createGroupChatRoom(request.getRoomTitle(), creatorId, cleanInvitedUserIds);
+        
+        // 3. 이제 활성화된 트랜잭션이 감지되므로 afterCommit() 동기화 엔진이 정상 작동합니다!
+        chatService.sendInviteNotification(roomId, creatorId, cleanInvitedUserIds, request.getRoomTitle());
         
         return ResponseEntity.ok(roomId);
     }
 
     /**
-     * 📋 현재 로그인한 유저가 참여 중인 채팅방 목록 조회 (DB 안 읽은 카운트 100% 반영)
+     * 📋 현재 로그인한 유저가 참여 중인 채팅방 목록 조회
      */
     @GetMapping
     public ResponseEntity<List<ChatRoomResponse>> getMyChatRooms(
@@ -72,7 +88,6 @@ public class ChatRoomController {
                     String title = mapping.getChatRoom().getTitle();
                     java.time.LocalDateTime lastReadAt = mapping.getLastReadAt();
                     
-                    // 1. 최근 메시지 추출
                     String lastMessage = "아직 대화가 없습니다.";
                     List<com.team2.talkking.domain.chat.entity.Message> lastMsgList = 
                             messageRepository.findTopByChatRoom_RoomIdOrderByCreatedAtDesc(roomId);
@@ -80,7 +95,6 @@ public class ChatRoomController {
                         lastMessage = lastMsgList.get(0).getMessage();
                     }
                     
-                    // 2. 내 마지막 접속 시간 이후로 생성된 메시지 개수 카운트!
                     long unreadCount = 0;
                     if (lastReadAt != null) {
                         unreadCount = messageRepository.countByChatRoom_RoomIdAndCreatedAtAfter(roomId, lastReadAt);
@@ -96,7 +110,7 @@ public class ChatRoomController {
     }
 
     /**
-     * 📜 특정 채팅방의 과거 대화 내역 조회 (🎯 내 진짜 가입 시간 이후 필터링 + 시스템 메시지 분기 탑재)
+     * 📜 특정 채팅방의 과거 대화 내역 조회
      */
     @GetMapping("/{roomId}/history-list") 
     public ResponseEntity<List<MessageHistoryResponse>> getChatHistories(
@@ -121,7 +135,6 @@ public class ChatRoomController {
                     return msg.getCreatedAt().isAfter(myJoinTime) || msg.getCreatedAt().isEqual(myJoinTime);
                 })
                 .map(msg -> {
-                    // 🎯 [핵심 추가] 텍스트가 끝나는 패턴을 분석하여 메시지 타입을 동적으로 판별합니다.
                     String type = "TALK";
                     if (msg.getMessage().endsWith("입장하셨습니다.")) {
                         type = "ENTER";
@@ -133,7 +146,7 @@ public class ChatRoomController {
                             msg.getSender().getUserId(),
                             msg.getSender().getNickname(), 
                             msg.getMessage(),
-                            type // 👈 생성자 파라미터에 type 추가 탑재
+                            type
                     );
                 })
                 .collect(java.util.stream.Collectors.toList());
@@ -143,18 +156,40 @@ public class ChatRoomController {
     
     /**
      * 👥 기존 채팅방에 신규 멤버 초대 API
+     * 🎯 [보정] 방 생성과 마찬가지로 트랜잭션을 걸어 딜레이 타이밍 문제를 원천 차단합니다.
      */
     @PostMapping("/{roomId}/invite")
+    @Transactional
     public ResponseEntity<String> inviteUsers(
             @PathVariable("roomId") Long roomId,
+            @RequestHeader("Authorization") String bearerToken, 
             @RequestBody InviteUserRequest request) {
         
-        chatRoomService.inviteUsersToExistingRoom(roomId, request.getInvitedUserIds());
+        String token = bearerToken.substring(7);
+        Long inviterId = jwtProvider.getUserId(token);
+        
+        List<Long> cleanInvitedUserIds = request.getInvitedUserIds().stream()
+                .map(id -> Long.parseLong(String.valueOf(id)))
+                .collect(Collectors.toList());
+
+        // 1. 기존 방에 멤버들 영속화 진행
+        chatRoomService.inviteUsersToExistingRoom(roomId, cleanInvitedUserIds);
+        
+        // 2. 방 제목 파싱
+        String roomTitle = userChatRoomRepository.findByChatRoom_RoomId(roomId)
+                .stream()
+                .map(mapping -> mapping.getChatRoom().getTitle())
+                .findFirst()
+                .orElse("그룹 채팅방");
+                
+        // 3. 커밋 완료 후 안전 발송 동기화 가동
+        chatService.sendInviteNotification(roomId, inviterId, cleanInvitedUserIds, roomTitle);
+        
         return ResponseEntity.ok("초대가 완료되었습니다.");
     }
 
     /**
-     * 👁️‍🗨️ [신설 추가] 특정 채팅방을 확인했을 때 내 last_read_at 시간을 현재 시간으로 UPDATE 하는 API
+     * 👁️‍🗨️ 특정 채팅방을 확인했을 때 내 last_read_at 시간 UPDATE
      */
     @PostMapping("/{roomId}/read")
     public ResponseEntity<String> updateLastRead(
@@ -175,7 +210,7 @@ public class ChatRoomController {
     }
 
     /**
-     * 👥 [신설 추가] 특정 채팅방에 현재 참여 중인 유저 목록 조회 (우측 사이드바용)
+     * 👥 특정 채팅방에 현재 참여 중인 유저 목록 조회 (우측 사이드바용)
      */
     @GetMapping("/{roomId}/users")
     public ResponseEntity<List<RoomParticipantResponse>> getRoomParticipants(
@@ -189,7 +224,7 @@ public class ChatRoomController {
                         mapping.getUser().getUserId(),
                         mapping.getUser().getNickname(),
                         mapping.getUser().getUsername()
-                ))
+                    ))
                 .collect(java.util.stream.Collectors.toList());
                 
         return ResponseEntity.ok(response);
@@ -224,7 +259,6 @@ public class ChatRoomController {
         private List<Long> invitedUserIds;
     }
 
-    // 🎯 [DTO 업데이트] 프론트엔드가 ENTER/QUIT/TALK 레이아웃 분기를 태울 수 있게 type 필드 전격 확장
     public record MessageHistoryResponse(Long senderId, String senderNickname, String message, String type) {}
     public record ChatRoomResponse(Long roomId, String title, String lastMessage, long unreadCount) {}
     public record RoomParticipantResponse(Long userId, String nickname, String username) {}

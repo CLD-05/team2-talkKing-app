@@ -19,4 +19,6 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 	List<Message> findTopByChatRoom_RoomIdOrderByCreatedAtDesc(Long roomId);
 
 	long countByChatRoom_RoomIdAndCreatedAtAfter(Long roomId, LocalDateTime lastReadAt);
+
+	void deleteByChatRoom_RoomId(Long roomId);
 }
