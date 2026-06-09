@@ -9,8 +9,8 @@ on:
 env:
   AWS_REGION: ap-northeast-2
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
-  ECR_REPOSITORY_CHAT: team2-talkking-chat
-  ECR_REPOSITORY_NOTIFICATION: team2-talkking-notification
+  ECR_REPOSITORY_CHAT: team2-talkKing-chat
+  ECR_REPOSITORY_NOTIFICATION: team2-talkKing-notification
 
 jobs:
   # ── chat 모듈 ──────────────────────────────
