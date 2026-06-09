@@ -15,18 +15,18 @@ public class User {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "user_id")
-    private Long userId; // 유저 고유 식별자
+    private Long userId;
 
-    @Column(name = "email", nullable = false, unique = true, length = 100)
-    private String email; // 로그인 아이디 및 이메일 알림용
+    @Column(nullable = false, unique = true, length = 50)
+    private String username; // 로그인에 사용할 아이디 (예: email 또는 id)
 
-    @Column(name = "password", nullable = false)
-    private String password; // 암호화된 비밀번호
+    @Column(nullable = false, length = 100)
+    private String password; // 암호화되어 저장될 비밀번호
 
-    @Column(name = "nickname", nullable = false, length = 50)
-    private String nickname; // 메신저 내 표시될 이름
+    @Column(nullable = false, length = 50)
+    private String nickname; // 채팅방에 표시될 닉네임
 
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
-    private LocalDateTime createdAt = LocalDateTime.now(); // 가입 일시
+    private LocalDateTime createdAt = LocalDateTime.now();
 }

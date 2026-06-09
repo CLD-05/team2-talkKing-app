@@ -8,9 +8,14 @@ import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
+import org.springframework.data.redis.listener.adapter.MessageListenerAdapter;
 import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
+
+import com.team2.talkking.global.redis.pubsub.RedisSubscriber;
+
 import java.util.List;
 
 @Configuration
@@ -27,6 +32,31 @@ public class RedisConfig {
 
     @Value("${spring.data.redis.cluster.nodes:#{null}}")
     private List<String> clusterNodes;
+
+    // 채팅 메시지를 주고받을 단일 Redis 토픽(채널) 정의
+    @Bean
+    public ChannelTopic chatTopic() {
+        return new ChannelTopic("chatroom");
+    }
+    
+    // 💬 [통합 및 해결] 두 개로 찢어져서 중복되던 컨테이너 빈을 하나로 합쳤습니다!
+    @Bean
+    public RedisMessageListenerContainer redisMessageListenerContainer(
+            RedisConnectionFactory connectionFactory,
+            MessageListenerAdapter listenerAdapter,
+            ChannelTopic chatTopic) {
+        
+        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+        container.setConnectionFactory(connectionFactory);
+        container.addMessageListener(listenerAdapter, chatTopic); // 다중 파드 간 Pub/Sub 리스너 등록
+        return container;
+    }
+
+    // 실제 메시지를 수신해서 웹소켓으로 브로드캐스팅할 실제 서비스 클래스 연동
+    @Bean
+    public MessageListenerAdapter listenerAdapter(RedisSubscriber subscriber) {
+        return new MessageListenerAdapter(subscriber, "sendMessage");
+    }
 
     @Bean
     public RedisConnectionFactory redisConnectionFactory() {
@@ -49,14 +79,6 @@ public class RedisConfig {
         LettuceConnectionFactory factory = new LettuceConnectionFactory(standaloneConfig);
         factory.setValidateConnection(false);
         return factory;
-    }
-
-    // 💬 다중 파드 간 메시지 동기화를 위한 Pub/Sub 컨테이너 설정
-    @Bean
-    public RedisMessageListenerContainer redisMessageListenerContainer(RedisConnectionFactory connectionFactory) {
-        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
-        container.setConnectionFactory(connectionFactory);
-        return container;
     }
 
     @Bean
