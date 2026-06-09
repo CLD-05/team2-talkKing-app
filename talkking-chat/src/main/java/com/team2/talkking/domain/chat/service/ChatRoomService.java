@@ -10,6 +10,7 @@ import com.team2.talkking.domain.chat.repository.UserChatRoomRepository;
 import com.team2.talkking.domain.user.entity.User;
 import com.team2.talkking.domain.user.repository.UserRepository;
 import com.team2.talkking.global.rabbitmq.config.RabbitConfig;
+import lombok.extern.slf4j.Slf4j;
 
 import lombok.RequiredArgsConstructor;
 
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ChatRoomService {
@@ -163,6 +165,7 @@ public class ChatRoomService {
         User leavingUser = userChatRoom.getUser();
         ChatRoom chatRoom = userChatRoom.getChatRoom();
 
+        // 1. 퇴장 메세지 생성 및 DB 저장
         String quitText = leavingUser.getNickname() + "님이 퇴장하셨습니다.";
         Message dbQuitMessage = Message.builder()
                         .chatRoom(chatRoom)
@@ -171,6 +174,7 @@ public class ChatRoomService {
                         .build();
         messageRepository.save(dbQuitMessage); 
 
+        // 2. 다른 소켓 서버(파드)들이 알 수 있도록 실시간 퇴장 신호 브로드캐스팅
         ChatMessageDto systemMessage = new ChatMessageDto();
         systemMessage.setType(ChatMessageDto.MessageType.QUIT); 
         systemMessage.setRoomId(String.valueOf(roomId));
@@ -181,10 +185,21 @@ public class ChatRoomService {
         String routingKey = "room." + roomId;
         rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE_NAME, routingKey, systemMessage);
 
+        // 3. 내 참여 정보 매핑 테이블에서 먼저 제거
         userChatRoomRepository.delete(userChatRoom);
 
+        // 4. 🎯 [정밀 타격] 현재 방에 남은 유저 수를 카운트합니다.
         long remainingUsers = userChatRoomRepository.countByChatRoom_RoomId(roomId);
+        
         if (remainingUsers == 0) {
+            log.info("🧹 방 번호 #{} 에 더 이상 참여자가 없으므로 데이터를 청소합니다.", roomId);
+            
+            // 🎯 [핵심 보정] 외래키 제약조건을 피하기 위해, 방을 지우기 전 해당 방의 메시지 이력을 전부 선제 삭제합니다!
+            // (만약 ChatRoom 엔티티 내부 List<Message> 필드에 cascade = CascadeType.ALL, orphanRemoval = true 가 설정되어 있다면 생략 가능하지만, 
+            // 안전하게 레포지토리 명시적 삭제가 확실합니다.)
+            messageRepository.deleteByChatRoom_RoomId(roomId); 
+            
+            // 이제 족쇄가 풀렸으므로 방을 안전하게 폭파합니다.
             chatRoomRepository.delete(chatRoom);
         }
     }

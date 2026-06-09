@@ -26,7 +26,6 @@ import java.util.stream.Collectors;
 public class ChatService {
 
     private final MessageRepository messageRepository;
-    // 🎯 실시간 알림 대상을 찾고 RabbitMQ로 쏘기 위해 레포지토리와 템플릿을 추가 주입합니다.
     private final UserChatRoomRepository userChatRoomRepository;
     private final RabbitTemplate rabbitTemplate;
 
@@ -42,8 +41,8 @@ public class ChatService {
                 .map(msg -> ChatMessageDto.builder()
                         .type(ChatMessageDto.MessageType.TALK)
                         .roomId(String.valueOf(msg.getChatRoom().getRoomId()))
-                        .sender(String.valueOf(msg.getSender().getUserId())) // 프론트엔드 비교를 위해 유저 ID 바인딩
-                        .senderNickname(msg.getSender().getNickname()) // 닉네임 필드 분리 바인딩
+                        .sender(String.valueOf(msg.getSender().getUserId())) 
+                        .senderNickname(msg.getSender().getNickname()) 
                         .message(msg.getMessage())
                         .createdAt(msg.getCreatedAt().toString())
                         .build())
@@ -52,44 +51,76 @@ public class ChatService {
     }
 
     /**
-     * 🔔 [신설] 일반 대화(TALK) 발생 시, 방에 없는 다른 참여자들에게 실시간 알림을 푸시합니다.
+     * 🔔 1. 일반 대화(TALK) 발생 시, 나를 제외한 방 참여자들에게 실시간 알림 푸시
      */
     @Transactional(readOnly = true)
     public void sendNotificationToParticipants(ChatMessageDto messageDto) {
-        // 일반 대화 메시지일 때만 알림 엔진을 가동합니다.
         if (ChatMessageDto.MessageType.TALK.equals(messageDto.getType())) {
             try {
                 Long roomId = Long.parseLong(messageDto.getRoomId());
-                Long senderId = Long.parseLong(messageDto.getSender());
+                Long senderId = Long.parseLong(messageDto.getSender()); 
 
-                // 1. 현재 채팅방에 속해 있는 모든 멤버 매핑 리스트를 가져옵니다.
                 List<UserChatRoom> participants = userChatRoomRepository.findAllByChatRoom_RoomId(roomId);
 
-                // 2. 방 멤버들을 순회하며 메시지를 보낸 본인을 제외하고 알림을 던집니다.
                 for (UserChatRoom participant : participants) {
                     Long targetUserId = participant.getUser().getUserId();
 
-                    // 본인에게는 알림을 보낼 필요가 없으므로 패스!
                     if (targetUserId.equals(senderId)) continue;
 
-                    // ✉️ 알림 서버(8082)가 가로챌 알림 전용 DTO 패킷 조립
                     ChatMessageDto pushNotice = new ChatMessageDto();
-                    pushNotice.setType(ChatMessageDto.MessageType.TALK); // 타입 고정
+                    pushNotice.setType(ChatMessageDto.MessageType.TALK);
                     pushNotice.setRoomId(String.valueOf(roomId));
                     pushNotice.setSender(String.valueOf(senderId));
-                    pushNotice.setSenderNickname(messageDto.getSenderNickname()); // 보낸 사람 이름
-                    pushNotice.setMessage(messageDto.getMessage()); // 메시지 본문 내용
+                    pushNotice.setSenderNickname(messageDto.getSenderNickname());
+                    pushNotice.setMessage(messageDto.getMessage()); 
 
-                    // 🎯 알림 서버의 큐와 연동된 라우팅 키 설정 (예: user.5)
                     String userRoutingKey = "user." + targetUserId;
                     
-                    // RabbitMQ 전용 우체국(Exchange)을 통해 전송!
                     rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE_NAME, userRoutingKey, pushNotice);
-                    log.info("🚀 [메시지 알림 발송] 대상 유저: {}, 방 번호: #{}", targetUserId, roomId);
+                    log.info("🚀 [채팅 알림 발송] 대상 유저: {}, 보낸 사람: {}", targetUserId, senderId);
                 }
             } catch (Exception e) {
-                log.error("❌ 실시간 메시지 알림 발송 중 오류 발생: ", e);
+                log.error("❌ 실시간 채팅 알림 발송 중 오류 발생: ", e);
             }
         }
+    }
+
+    /**
+     * 🔔 2. [초대 알림 데이터 및 타이밍 최종 완성판]
+     * 🎯 락을 유발하는 @Transactional과 afterCommit을 완전히 제거했습니다.
+     * 별도의 비동기 데몬 쓰레드를 열어 8080의 DB 저장이 커밋될 대기 시간을 안정적으로 보장한 뒤 무조건 직송합니다.
+     */
+    public void sendInviteNotification(Long roomId, Long inviterId, List<Long> invitedUserIds, String roomTitle) {
+        log.info("📢 [초대 알림 엔진 가동] 방 번호: #{}, 초대받은 명단 수: {}개", roomId, invitedUserIds.size());
+        
+        new Thread(() -> {
+            try {
+                // 🎯 8080 서버가 컨트롤러 요청을 끝내고 DB 물리 커밋을 완료할 시간을 벌어주는 완충재 (300ms)
+                Thread.sleep(300); 
+                
+                for (Object target : invitedUserIds) {
+                    Long targetUserId = Long.parseLong(String.valueOf(target));
+                    
+                    if (targetUserId.equals(inviterId)) continue; 
+
+                    ChatMessageDto pushNotice = new ChatMessageDto();
+                    pushNotice.setType(ChatMessageDto.MessageType.ENTER); 
+                    pushNotice.setRoomId(String.valueOf(roomId));
+                    pushNotice.setSender(String.valueOf(inviterId));
+                    pushNotice.setSenderNickname("시스템"); 
+                    
+                    String welcomeMsg = "✉️ '" + roomTitle + "' 채팅방에 초대되었습니다!";
+                    pushNotice.setMessage(welcomeMsg);
+
+                    String userRoutingKey = "user." + targetUserId;
+                    
+                    // RabbitMQ 브로커로 안전 직송
+                    rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE_NAME, userRoutingKey, pushNotice);
+                    log.info("🚀 [초대 알림 전송 완료] 수신 대상: user.{}, 메세지: {}", targetUserId, welcomeMsg);
+                }
+            } catch (Exception e) {
+                log.error("❌ 비동기 초대 알림 발송 중 치명적 오류 발생: ", e);
+            }
+        }).start();
     }
 }
