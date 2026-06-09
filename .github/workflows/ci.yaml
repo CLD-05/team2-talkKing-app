@@ -32,7 +32,7 @@ jobs:
           cache: maven
 
       - name: Build and test (chat)
-        working-directory: talkKing-chat
+        working-directory: talkking-chat
         run: mvn package
 
   # ── notification 모듈 ──────────────────────
@@ -54,7 +54,7 @@ jobs:
           cache: maven
 
       - name: Build and test (notification)
-        working-directory: talkKing-notification
+        working-directory: talkking-notification
         run: mvn package
 
   # ── Docker 이미지 빌드 및 ECR 푸시 ──────────────────────
@@ -89,7 +89,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./talkKing-chat/Dockerfile
+          file: ./talkking-chat/Dockerfile
           push: true
           tags: |
             ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_CHAT }}:${{ github.sha }}
@@ -105,7 +105,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./talkKing-notification/Dockerfile
+          file: ./talkking-notification/Dockerfile
           push: true
           tags: |
             ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_NOTIFICATION }}:${{ github.sha }}
@@ -148,8 +148,8 @@ jobs:
           
           # 이미지 태그 업데이트
           kustomize edit set image \
-            "talkKing-chat=$ECR_REGISTRY/$ECR_REPOSITORY_CHAT:$IMAGE_TAG" \
-            "talkKing-notification=$ECR_REGISTRY/$ECR_REPOSITORY_NOTIFICATION:$IMAGE_TAG"
+            "talkking-chat=$ECR_REGISTRY/$ECR_REPOSITORY_CHAT:$IMAGE_TAG" \
+            "talkking-notification=$ECR_REGISTRY/$ECR_REPOSITORY_NOTIFICATION:$IMAGE_TAG"
           
           echo "Updated kustomization.yaml"
 
