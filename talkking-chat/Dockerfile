@@ -8,9 +8,12 @@ COPY talkking-chat/pom.xml talkking-chat/
 COPY talkking-notification/pom.xml talkking-notification/
 RUN mvn dependency:go-offline -B
 
-# 소스 복사 후 chat 모듈만 빌드
+# 모든 소스 복사 (chat과 notification 모두)
 COPY talkking-chat/src talkking-chat/src
-RUN mvn clean package -pl talkking-chat -am -DskipTests
+COPY talkking-notification/src talkking-notification/src
+
+# chat 모듈만 빌드 (의존성 자동 처리)
+RUN mvn clean package -pl talkking-chat -am
 
 # 2단계: 실행
 FROM eclipse-temurin:17-jre-alpine
