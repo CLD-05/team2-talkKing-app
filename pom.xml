@@ -17,7 +17,6 @@
 <modules>
     <module>talkking-chat</module>
     <module>talkking-notification</module>
-    <module>ai-error-analyzer</module>
 </modules>
 
   <properties>
