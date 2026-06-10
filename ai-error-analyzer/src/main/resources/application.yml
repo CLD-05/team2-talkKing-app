@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: ai-error-analyzer
+
+server:
+  port: 8082
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+errorops:
+  kubernetes:
+    log-tail-lines: 120
+  gemini:
+    model: gemini-1.5-flash
+    api-key: ${GEMINI_API_KEY:}
+  slack:
+    webhook-url: ${SLACK_WEBHOOK_URL:}
