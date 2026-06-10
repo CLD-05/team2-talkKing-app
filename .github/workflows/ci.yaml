@@ -11,6 +11,7 @@ env:
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
   ECR_REPOSITORY_CHAT: team2-talkking/chat-service
   ECR_REPOSITORY_NOTIFICATION: team2-talkking/notification-service
+  ECR_REPOSITORY_ANALYZER: team2-talkking/ai-error-analyzer
 
 jobs:
   # ── chat 모듈 ──────────────────────────────
@@ -57,9 +58,31 @@ jobs:
         working-directory: talkking-notification
         run: mvn package
 
+  # ── ai-error-analyzer 모듈 ──────────────────────────────
+  build-analyzer:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build and test (analyzer)
+        working-directory: ai-error-analyzer
+        run: mvn package
+
   # ── Docker 이미지 빌드 및 ECR 푸시 ──────────────────────
   push-to-ecr:
-    needs: [build-chat, build-notification]
+    needs: [build-chat, build-notification, build-analyzer]
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     permissions:
@@ -119,6 +142,21 @@ jobs:
           echo "Chat image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_CHAT }}:${{ github.sha }}"
           echo "Notification image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_NOTIFICATION }}:${{ github.sha }}"
 
+      # AI Error Analyzer 이미지 빌드 및 푸시 (새로 추가!)
+      - name: Build and push analyzer image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./ai-error-analyzer/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_ANALYZER }}:${{ github.sha }}
+          build-args: |
+            BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   # ── GitOps: Config Repository 업데이트 ──────────────────────
   update-config:
     needs: [push-to-ecr]
@@ -147,7 +185,8 @@ jobs:
           # 이미지 태그 업데이트
           kustomize edit set image \
             "talkking-chat=$ECR_REGISTRY/$ECR_REPOSITORY_CHAT:$IMAGE_TAG" \
-            "talkking-notification=$ECR_REGISTRY/$ECR_REPOSITORY_NOTIFICATION:$IMAGE_TAG"
+            "talkking-notification=$ECR_REGISTRY/$ECR_REPOSITORY_NOTIFICATION:$IMAGE_TAG" \
+            "ai-error-analyzer=$ECR_REGISTRY/$ECR_REPOSITORY_ANALYZER:$IMAGE_TAG"
           
           echo "Updated kustomization.yaml"
 
