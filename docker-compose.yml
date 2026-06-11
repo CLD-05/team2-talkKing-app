@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # 💬 1. 채팅 코어 서비스 (8080 포트)
+  talkking-chat:
+    build:
+      context: .
+      dockerfile: talkking-chat/Dockerfile
+    container_name: talkking-chat-service
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - TZ=Asia/Seoul
+    depends_on:
+      - rabbitmq # RabbitMQ가 먼저 켜진 뒤에 스프링이 뜨도록 순서 보장
+
+  # 🔔 2. 알림 요약 서비스 (8081 포트 이사 완료)
+  talkking-notification:
+    build:
+      context: .
+      dockerfile: talkking-notification/Dockerfile
+    container_name: talkking-notification-service
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - TZ=Asia/Seoul
+    depends_on:
+      - rabbitmq
+
+  # 🚀 3. 분산 메시징 브로커 (RabbitMQ)
+  rabbitmq:
+    image: rabbitmq:3.11-management-alpine
+    container_name: talkking-rabbitmq
+    ports:
+      - "5672:5672"   # AMQP 통신 포트
+      - "15672:15672" # RabbitMQ 관리자 대시보드 웹 포트
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+volumes:
+  rabbitmq_data:

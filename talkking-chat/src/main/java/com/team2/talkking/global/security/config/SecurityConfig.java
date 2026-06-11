@@ -31,33 +31,35 @@ public class SecurityConfig {
             // 2. CORS 통합 바인딩 적용
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             
-            // 🎯 [핵심 추가] 8080 웹소켓 핸드셰이크를 낚아채는 기본 로그인 폼 및 HTTP 인증 완벽 해제!
+            // 폼 로그인 및 기본 HTTP 인증 비활성화 유지
             .formLogin(form -> form.disable())
             .httpBasic(basic -> basic.disable())
             
-            // 3. URL별 권한 완전 개방
+            // 3. URL별 권한 관리
             .authorizeHttpRequests(authorize -> authorize
+                // 로그인 화면과 메인 화면의 각 고유 html 주소 및 정적 리소스를 완전히 열어둡니다.
+                // 이렇게 해야 브라우저가 각 화면에 맞는 CSS/JS를 온전하게 독립적으로 로드합니다.
                 .requestMatchers(
-                    "/ws",                 // 웹소켓 기본 관문
-                    "/ws/**",              // SockJS 스트리밍/폴링 통로 (403 원천 차단)
-                    "/index.html", 
-                    "/login.html",      
+                    "/", 
+                    "/login", 
+                    "/signup", 
+                    "/login.html",
+                    "/main.html",
                     "/signup.html",
-                    "/main.html",        
                     "/api/users/signup", 
                     "/api/users/login",
-                    "/api/chat/**",        // 🎯 [교정] /api/chat/ 하위의 모든 이력, 유저 목록, 읽음 처리, 초대 API 프리패스!
-                    "/favicon.ico"
+                    "/api/chat/**",        // 채팅 API 레이어 허용 유지
+                    "/css/**", "/js/**", "/images/**", "/favicon.ico",
+                    "/ws", "/ws/**"
                 ).permitAll()
                 
-                // 그 외 기타 보안이 꼭 필요한 영역만 인증 적용
-                .anyRequest().permitAll() // 💡 개발 완료 시점에 .authenticated()로 전환하시는 것을 추천합니다.
+                .anyRequest().permitAll()
             );
             
         return http.build();
     }
 
-    // 🌐 8080 포트 CORS 완전 개방 빈 추가 (소켓 통신 안정화용)
+    // 🌐 CORS 완전 개방 빈 설정
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();

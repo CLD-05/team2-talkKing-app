@@ -24,7 +24,20 @@ public class ChatRoom {
     @Builder.Default
     private Boolean isGroup = false;
 
+    // 🎯 [추가] 목록 최신순 정렬 및 화면 출력을 위한 필드
+    @Column(name = "last_message_content")
+    private String lastMessageContent;
+
+    @Column(name = "last_message_at")
+    private LocalDateTime lastMessageAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    // 🎯 [추가] 새 메시지가 올 때마다 업데이트해 줄 편의 메서드
+    public void updateLastMessage(String content, LocalDateTime sentAt) {
+        this.lastMessageContent = content;
+        this.lastMessageAt = sentAt;
+    }
 }

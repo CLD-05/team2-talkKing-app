@@ -15,22 +15,25 @@ import java.time.LocalDateTime;
 public class ChatMessageDto {
 
     public enum MessageType {
-        ENTER, TALK, QUIT
+        ENTER, TALK, QUIT, READ 
     }
+
+    // 🎯 [추가] 읽음 책갈피 기준선 처리를 위해 메시지의 고유 PK ID를 필드로 추가합니다.
+    private Long messageId; 
 
     private MessageType type;    
     private String roomId;       
-    private String sender;       // 🎯 여기에 유저의 고유 ID(숫자값)를 담으세요!
-    private String senderNickname; // 화면 표시용 닉네임 (선택 사항)
+    private String sender;       
+    private String senderNickname; 
     private String message;      
     private String createdAt;   
     
-    public Message toEntity(ChatRoom chatRoom, User sender) {
+    public Message toEntity(ChatRoom chatRoom, User sender, LocalDateTime now) {
         return Message.builder()
                 .chatRoom(chatRoom)
                 .sender(sender)
                 .message(this.message)
-                .createdAt(LocalDateTime.now()) // 🎯 DB 저장 시점의 서버 시간을 정확하게 기록해 줍니다.
+                .createdAt(now)
                 .build();
     }
 }
