@@ -35,6 +35,13 @@ spring:
     username: ${RABBITMQ_USERNAME:guest}
     password: ${RABBITMQ_PASSWORD:guest}
 
+  # 🔴 [추가 핵심] 고성능 인메모리 데이터 스토어 Redis 인프라 세팅
+  # 테스트(test) 프로파일 가동 시 및 로컬 구동 시 자동 구성을 활성화하여 빈 유실 예외를 방어합니다.
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost} # 환경 변수가 없으면 로컬 레디스(localhost) 자동 맵핑
+      port: ${REDIS_PORT:6379}
+
 logging:
   level:
     root: INFO
@@ -55,5 +62,6 @@ spring:
 # 💡 쿠버네티스 배포 문서(deployment.yaml)에서 아래 환경변수들을 주입해 주면 localhost가 아닌 k8s 내부 주소로 완벽히 치환됩니다.
 # - DATABASE_HOST: mysql-service
 # - RABBITMQ_HOST: rabbitmq-service
+# - REDIS_HOST: redis-service      <- [추가 지정 가능]
 # - DATABASE_USERNAME: (실제운영 ID)
 # - DATABASE_PASSWORD: (실제운영 PW)
