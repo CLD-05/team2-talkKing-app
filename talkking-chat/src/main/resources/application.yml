@@ -1,31 +1,67 @@
-# Chat Config
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
 spring:
-  application:
-    name: talkking-chat
+  profiles:
+    active: dev # 아무 설정 없이 켜면 기본 주파수는 dev
+
+---
+# 🚀 [운영/운영 인프라 공통 대응 백본]
+# 1층(공통)에 설정해 둔 기본값들이 'dev' 상태일 때 자동으로 작동합니다.
+spring:
+  # 🗄️ MySQL 데이터베이스 연동 및 JPA 영속성 설정
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/YOUR_DB_NAME?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
-    username: root
-    password: YOUR_PASSWORD
+    # 🎯 [교정 핵심]: 환경 변수가 없으면 콜론(:) 뒤의 'localhost'를 바라봅니다. (로컬 dev 완벽 호환)
+    url: jdbc:mysql://${DATABASE_HOST:localhost}:${DATABASE_PORT:3306}/${DATABASE_NAME:talkking}?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul
+    username: ${DATABASE_USERNAME:root} # 로컬에 비번이 없다면 기본값 적거나 비워두기 가능
+    password: ${DATABASE_PASSWORD:password}
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: update # 💻 dev 환경을 고려해 우선 update로 세팅 (prod 구역에서 validate로 덮어씁니다)
     show-sql: true
     properties:
       hibernate:
         format_sql: true
-        
-  spring:
+        dialect: org.hibernate.dialect.MySQLDialect
+
+  # 🐇 분산 메시징 서버 RabbitMQ 인프라 세팅
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost} # 🎯 [교정 핵심]: 환경 변수가 없으면 로컬 토끼(localhost)를 찌릅니다.
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+
+  # 🔴 [추가 핵심] 고성능 인메모리 데이터 스토어 Redis 인프라 세팅
+  # 테스트(test) 프로파일 가동 시 및 로컬 구동 시 자동 구성을 활성화하여 빈 유실 예외를 방어합니다.
   data:
     redis:
-      host: ${SPRING_DATA_REDIS_HOST:localhost}
-      port: ${SPRING_DATA_REDIS_PORT:6379}
-      cluster:
-        nodes: ${SPRING_DATA_REDIS_CLUSTER_NODES:}
-         
-  rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
+      host: ${REDIS_HOST:localhost} # 환경 변수가 없으면 로컬 레디스(localhost) 자동 맵핑
+      port: ${REDIS_PORT:6379}
+
+logging:
+  level:
+    root: INFO
+    com.team2.talkking: DEBUG # 로컬 개발용 로그 레벨 업
+
+---
+# 🚀 오직 쿠버네티스 프로덕션(prod) 환경에서만 발동되는 차단벽
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  jpa:
+    hibernate:
+      ddl-auto: validate # 🚀 운영 환경에서는 안전하게 테이블 검증만 수행
+    show-sql: false
+
+# 💡 쿠버네티스 배포 문서(deployment.yaml)에서 아래 환경변수들을 주입해 주면 localhost가 아닌 k8s 내부 주소로 완벽히 치환됩니다.
+# - DATABASE_HOST: mysql-service
+# - RABBITMQ_HOST: rabbitmq-service
+# - REDIS_HOST: redis-service      <- [추가 지정 가능]
+# - DATABASE_USERNAME: (실제운영 ID)
+# - DATABASE_PASSWORD: (실제운영 PW)

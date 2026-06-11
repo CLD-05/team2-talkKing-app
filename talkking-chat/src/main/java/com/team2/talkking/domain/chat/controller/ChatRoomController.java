@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.transaction.annotation.Transactional; // 🎯 주입 확인
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -44,7 +44,6 @@ public class ChatRoomController {
 
     /**
      * ➕ 그룹 채팅방 개설 및 다중 초대
-     * 🎯 [보정] 컨트롤러 진입점에 @Transactional을 선언하여 서비스 호출과 알림 레이어를 하나의 트랜잭션 바운더리로 묶습니다.
      */
     @PostMapping
     @Transactional
@@ -55,15 +54,12 @@ public class ChatRoomController {
         String token = bearerToken.substring(7);
         Long creatorId = jwtProvider.getUserId(token);
         
-        // 1. DTO 유저 ID 강제 Long 타입 래핑 및 박스갈이 처리 (무결성 최적화)
         List<Long> cleanInvitedUserIds = request.getInvitedUserIds().stream()
                 .map(id -> Long.parseLong(String.valueOf(id)))
                 .collect(Collectors.toList());
 
-        // 2. 단톡방 개설 및 DB 저장 진행 (트랜잭션 유지 상태)
         Long roomId = chatRoomService.createGroupChatRoom(request.getRoomTitle(), creatorId, cleanInvitedUserIds);
         
-        // 3. 이제 활성화된 트랜잭션이 감지되므로 afterCommit() 동기화 엔진이 정상 작동합니다!
         chatService.sendInviteNotification(roomId, creatorId, cleanInvitedUserIds, request.getRoomTitle());
         
         return ResponseEntity.ok(roomId);
@@ -71,42 +67,18 @@ public class ChatRoomController {
 
     /**
      * 📋 현재 로그인한 유저가 참여 중인 채팅방 목록 조회
+     * 🎯 [대수술 완료] 컴파일 에러를 유발하고 좀비 배지 버그를 만들던 레거시 로직 전면 폐쇄!
+     * 우리가 완벽하게 설계한 chatService의 Redis 최적화 리스트 출력 엔진과 파이프를 다이렉트로 연결합니다.
      */
     @GetMapping
-    public ResponseEntity<List<ChatRoomResponse>> getMyChatRooms(
+    public ResponseEntity<?> getMyChatRooms(
             @RequestHeader("Authorization") String bearerToken) {
         
         String token = bearerToken.substring(7);
         Long myId = jwtProvider.getUserId(token);
         
-        List<com.team2.talkking.domain.chat.entity.UserChatRoom> mappings = 
-                userChatRoomRepository.findByUser_UserId(myId);
-        
-        List<ChatRoomResponse> response = mappings.stream()
-                .map(mapping -> {
-                    Long roomId = mapping.getChatRoom().getRoomId();
-                    String title = mapping.getChatRoom().getTitle();
-                    java.time.LocalDateTime lastReadAt = mapping.getLastReadAt();
-                    
-                    String lastMessage = "아직 대화가 없습니다.";
-                    List<com.team2.talkking.domain.chat.entity.Message> lastMsgList = 
-                            messageRepository.findTopByChatRoom_RoomIdOrderByCreatedAtDesc(roomId);
-                    if (lastMsgList != null && !lastMsgList.isEmpty()) {
-                        lastMessage = lastMsgList.get(0).getMessage();
-                    }
-                    
-                    long unreadCount = 0;
-                    if (lastReadAt != null) {
-                        unreadCount = messageRepository.countByChatRoom_RoomIdAndCreatedAtAfter(roomId, lastReadAt);
-                    } else {
-                        unreadCount = lastMsgList != null ? lastMsgList.size() : 0; 
-                    }
-                    
-                    return new ChatRoomResponse(roomId, title, lastMessage, unreadCount);
-                })
-                .collect(java.util.stream.Collectors.toList());
-                
-        return ResponseEntity.ok(response);
+        // 🚀 수동 카운팅 뜯어내고 최신 정렬 + Redis 읽음 카운팅 엔진 호출!
+        return ResponseEntity.ok(chatService.getMyChatRoomList(myId));
     }
 
     /**
@@ -156,7 +128,6 @@ public class ChatRoomController {
     
     /**
      * 👥 기존 채팅방에 신규 멤버 초대 API
-     * 🎯 [보정] 방 생성과 마찬가지로 트랜잭션을 걸어 딜레이 타이밍 문제를 원천 차단합니다.
      */
     @PostMapping("/{roomId}/invite")
     @Transactional
@@ -172,17 +143,14 @@ public class ChatRoomController {
                 .map(id -> Long.parseLong(String.valueOf(id)))
                 .collect(Collectors.toList());
 
-        // 1. 기존 방에 멤버들 영속화 진행
         chatRoomService.inviteUsersToExistingRoom(roomId, cleanInvitedUserIds);
         
-        // 2. 방 제목 파싱
         String roomTitle = userChatRoomRepository.findByChatRoom_RoomId(roomId)
                 .stream()
                 .map(mapping -> mapping.getChatRoom().getTitle())
                 .findFirst()
                 .orElse("그룹 채팅방");
                 
-        // 3. 커밋 완료 후 안전 발송 동기화 가동
         chatService.sendInviteNotification(roomId, inviterId, cleanInvitedUserIds, roomTitle);
         
         return ResponseEntity.ok("초대가 완료되었습니다.");
@@ -260,6 +228,5 @@ public class ChatRoomController {
     }
 
     public record MessageHistoryResponse(Long senderId, String senderNickname, String message, String type) {}
-    public record ChatRoomResponse(Long roomId, String title, String lastMessage, long unreadCount) {}
     public record RoomParticipantResponse(Long userId, String nickname, String username) {}
 }
