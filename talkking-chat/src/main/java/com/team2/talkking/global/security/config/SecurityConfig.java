@@ -50,7 +50,8 @@ public class SecurityConfig {
                     "/api/users/login",
                     "/api/chat/**",        // 채팅 API 레이어 허용 유지
                     "/css/**", "/js/**", "/images/**", "/favicon.ico",
-                    "/ws", "/ws/**"
+                    "/ws", "/ws/**",
+                    "/ws-notif", "/ws-notif/**"
                 ).permitAll()
                 
                 .anyRequest().permitAll()
