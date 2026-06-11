@@ -61,27 +61,29 @@ function connectWebSocket(roomList) {
     const rooms = roomList || [];
 
     function connectChatServer() {
-        const chatSocket = new SockJS('http://localhost:8080/ws'); 
+        // 🔥 [주소 버그 해결] localhost:8080을 지우고 인그레스 규칙에 맞는 상대 경로로 변경합니다.
+        const chatSocket = new SockJS('/ws'); 
         stompClient = Stomp.over(chatSocket);
         stompClient.debug = null; 
 
         stompClient.connect({}, function (frame) {
-            console.log('채팅 서버(8080) 연결 성공 및 방 감시 시작 🚀');
+            console.log('채팅 서버 연결 성공 및 방 감시 시작 🚀');
             rooms.forEach(room => { subscribeToRoom(room.roomId); });
         }, function (error) {
-            console.warn("⚠️ 채팅 소켓(8080) 연결 실패. 5초 후 재연결 시도.");
+            console.warn("⚠️ 채팅 소켓 연결 실패. 5초 후 재연결 시도.");
             setTimeout(connectChatServer, 5000);
         });
     }
 
     connectChatServer();
 
-    const notifSocket = new SockJS('http://localhost:8081/ws-notif');
+    // 🔥 [주소 버그 해결] localhost:8081을 지우고 동일하게 사설 망 분기 상대 경로로 변경합니다.
+    const notifSocket = new SockJS('/ws-notif');
     const notifClient = Stomp.over(notifSocket);
     notifClient.debug = null;
 
     notifClient.connect({}, function (frame) {
-        console.log(`%c🔔 알림 서버(8081) 연결 성공! 타겟 라우터: /topic/user.${myRealUserId}`, "color: #28a745; font-weight: bold;");
+        console.log(`%c🔔 알림 서버 연결 성공! 타겟 라우터: /topic/user.${myRealUserId}`, "color: #28a745; font-weight: bold;");
         
         notifClient.subscribe(`/topic/user.${myRealUserId}`, function (response) {
             try {
@@ -122,7 +124,7 @@ function connectWebSocket(roomList) {
                 console.error("❌ 알림 가공 에러:", parsingError);
             }
         });
-    }, function (error) { console.error("❌ 8081 알림 소켓 유실:", error); });
+    }, function (error) { console.error("❌ 알림 소켓 유실:", error); });
 } 
 
 function subscribeToRoom(roomId) {
