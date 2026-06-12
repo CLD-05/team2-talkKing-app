@@ -184,21 +184,32 @@ function subscribeToRoom(roomId) {
         }
         
         if (!isMessageFromMe) {
-            if (Number(currentRoomId) === Number(roomId)) unreadCounts[roomId] = 0;
-            else unreadCounts[roomId] = (unreadCounts[roomId] || 0) + 1; 
-            updateBadgeUI(roomId);
+            if (Number(currentRoomId) === Number(roomId)) {
+                unreadCounts[roomId] = 0;
+            } else {
+                unreadCounts[roomId] = (unreadCounts[roomId] || 0) + 1; 
+            }
         } else {
             unreadCounts[roomId] = 0;
-            updateBadgeUI(roomId);
         }
         
+        // 2. 마지막 메시지 캐시 저장 및 텍스트 반영
         const receivedText = messageBody.message || messageBody.content || "";
         realTimeLastMessages[roomId] = receivedText;
 
         const lastMsgTarget = document.getElementById(`last-msg-${roomId}`);
         if (lastMsgTarget) lastMsgTarget.innerText = receivedText;
 
-        loadMyChatRooms();
+        // 3. 🔔 화면의 빨간 배지 UI 최종 업데이트 (순서를 뒤로 배치)
+        updateBadgeUI(roomId);
+
+        // 4. ❌ [기존 loadMyChatRooms() 제거] 
+        // 전체를 새로 그리지 않고, 방 순서만 맨 위로 올리고 싶다면 아래 로직으로 대체합니다.
+        const roomItemEl = document.getElementById(`room-item-${roomId}`);
+        const roomListDiv = document.getElementById('room-list');
+        if (roomItemEl && roomListDiv) {
+            roomListDiv.insertBefore(roomItemEl, roomListDiv.firstChild); // 새 메시지 온 방을 맨 위로 슝!
+        }
     });
 }
     
