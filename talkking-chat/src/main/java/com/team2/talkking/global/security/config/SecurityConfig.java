@@ -48,6 +48,7 @@ public class SecurityConfig {
                     "/api/users/signup", 
                     "/api/users/login",
                     "/api/chat/**",        // 채팅 API 레이어 허용 유지
+                    "/api/test/**",
                     "/css/**", "/js/**", "/images/**", "/favicon.ico",
                     "/ws", "/ws/**",
                     "/ws-notif", "/ws-notif/**"
