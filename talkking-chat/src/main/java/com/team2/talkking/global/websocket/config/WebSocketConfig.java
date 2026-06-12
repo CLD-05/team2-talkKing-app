@@ -18,9 +18,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         // 2. 🔥 [추가 필수] 실시간 알림용 엔드포인트 대개방!
         // 프론트엔드의 /ws-notif 및 인그레스 패스와 완벽하게 일치해야 합니다.
         registry.addEndpoint("/ws-notif")
-                .setAllowedOriginPatterns("*") // CORS 허용
-                .withSockJS();                 // 👈 이게 있어야 프론트엔드 SockJS가 /info 주소를 찾아서 붙습니다!
-    }
+        		.setAllowedOrigins("*") // 👈 기존 Pattern 대신 Origins도 같이 지정하거나
+        		.setAllowedOriginPatterns("*")
+        		.withSockJS();
+    }	
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
