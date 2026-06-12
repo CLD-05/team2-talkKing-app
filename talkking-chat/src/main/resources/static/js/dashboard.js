@@ -187,28 +187,34 @@ function subscribeToRoom(roomId) {
             if (Number(currentRoomId) === Number(roomId)) {
                 unreadCounts[roomId] = 0;
             } else {
-                unreadCounts[roomId] = (unreadCounts[roomId] || 0) + 1; 
+                // 실서버 API가 0으로 덮어쓰는 걸 방지하기 위해 기존 화면에 뜬 숫자가 있다면 그걸 기반으로 덧셈
+                const badgeTarget = document.getElementById(`badge-${roomId}`);
+                if (badgeTarget && badgeTarget.style.display !== "none") {
+                    unreadCounts[roomId] = Number(badgeTarget.innerText) + 1;
+                } else {
+                    unreadCounts[roomId] = (unreadCounts[roomId] || 0) + 1;
+                }
             }
         } else {
             unreadCounts[roomId] = 0;
         }
         
-        // 2. 마지막 메시지 캐시 저장 및 텍스트 반영
+        // 2. 마지막 메시지 텍스트 즉시 변경
         const receivedText = messageBody.message || messageBody.content || "";
         realTimeLastMessages[roomId] = receivedText;
 
         const lastMsgTarget = document.getElementById(`last-msg-${roomId}`);
         if (lastMsgTarget) lastMsgTarget.innerText = receivedText;
 
-        // 3. 🔔 화면의 빨간 배지 UI 최종 업데이트 (순서를 뒤로 배치)
+        // 3. 🔔 서버 API를 호출하지 않고, 순수 자바스크립트로 화면 배지 숫자 강제 업데이트
         updateBadgeUI(roomId);
 
-        // 4. ❌ [기존 loadMyChatRooms() 제거] 
-        // 전체를 새로 그리지 않고, 방 순서만 맨 위로 올리고 싶다면 아래 로직으로 대체합니다.
+        // 4. 🔥 [핵심] loadMyChatRooms()를 절대 호출하지 마세요! (파드가 튀어서 숫자 덮어쓰는 주범)
+        // 대신 화면에 있는 방 엘리먼트 순서만 맨 위로 올려줍니다.
         const roomItemEl = document.getElementById(`room-item-${roomId}`);
         const roomListDiv = document.getElementById('room-list');
         if (roomItemEl && roomListDiv) {
-            roomListDiv.insertBefore(roomItemEl, roomListDiv.firstChild); // 새 메시지 온 방을 맨 위로 슝!
+            roomListDiv.insertBefore(roomItemEl, roomListDiv.firstChild);
         }
     });
 }

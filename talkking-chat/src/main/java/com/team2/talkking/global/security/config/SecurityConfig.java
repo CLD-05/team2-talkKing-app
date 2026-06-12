@@ -11,6 +11,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.Collections;
 
 @Configuration
@@ -25,20 +26,12 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            // 1. CSRF 보안 해제 (JWT 및 비동기 소켓 환경 필수)
             .csrf(csrf -> csrf.disable()) 
-            
-            // 2. CORS 통합 바인딩 적용
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            
-            // 폼 로그인 및 기본 HTTP 인증 비활성화 유지
             .formLogin(form -> form.disable())
             .httpBasic(basic -> basic.disable())
             
-            // 3. URL별 권한 관리
             .authorizeHttpRequests(authorize -> authorize
-                // 로그인 화면과 메인 화면의 각 고유 html 주소 및 정적 리소스를 완전히 열어둡니다.
-                // 이렇게 해야 브라우저가 각 화면에 맞는 CSS/JS를 온전하게 독립적으로 로드합니다.
                 .requestMatchers(
                     "/", 
                     "/login", 
@@ -48,26 +41,36 @@ public class SecurityConfig {
                     "/signup.html",
                     "/api/users/signup", 
                     "/api/users/login",
-                    "/api/chat/**",        // 채팅 API 레이어 허용 유지
+                    "/api/chat/**",        
                     "/css/**", "/js/**", "/images/**", "/favicon.ico",
                     "/ws", "/ws/**",
-                    "/ws-notif", "/ws-notif/**"
+                    "/ws-notif", "/ws-notif/**" // 👈 우리가 추가한 웹소켓 엔드포인트도 안전하게 오픈
                 ).permitAll()
                 
-                .anyRequest().permitAll()
+                .anyRequest().permitAll() // 임시 전체 허용 상태 유지
             );
             
         return http.build();
     }
 
-    // 🌐 CORS 완전 개방 빈 설정
+    // 🌐 실서버 멀티파드 + AWS ALB 완벽 대응 CORS 설정
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(Collections.singletonList("*"));
-        configuration.setAllowedMethods(Collections.singletonList("*"));
-        configuration.setAllowedHeaders(Collections.singletonList("*"));
+        
+        // ✅ 수정 핵심: 자격 증명(Cookie, Header)을 무조건 허용해야 세션 고정(Stickiness)이 작동합니다!
         configuration.setAllowCredentials(true);
+        
+        // ✅ 중요: Credentials가 true일 때는 "*"를 쓸 수 없으므로, 로컬과 AWS 로드밸런서 주소를 명시적으로 적어줍니다.
+        configuration.setAllowedOriginPatterns(Arrays.asList(
+            "http://localhost:8080",
+            "http://localhost:5500", // Live Server용 테스트 주소
+            "http://k8s-talkking-talkking-893e5c97f8-1005057240.ap-northeast-2.elb.amazonaws.com" // 👈 실서버 ALB 주소 필수 등록!
+        ));
+        
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        configuration.setAllowedHeaders(Collections.singletonList("*"));
+        configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
