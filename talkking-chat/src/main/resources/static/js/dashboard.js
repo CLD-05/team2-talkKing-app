@@ -702,8 +702,8 @@ function showNotificationToast(message) {
     let cleanMessage = message.replace(/[\r\n]+/g, " ").trim();
 
     let osTitle = "💬 TalkKing 새 메시지";
-    let osBody = cleanMessage;
-    let roomTag = String(Date.now()); 
+    let osBody = cleanMessage; // 👈 OS 알림창에 들어갈 실제 본문 내용
+    let roomTag = "talkking-chat-room"; // 👈 renotify를 위해 일관된 태그나 방 ID 권장
     let displayMessage = cleanMessage; 
 
     try {
@@ -714,6 +714,8 @@ function showNotificationToast(message) {
                 const fixedRoomName = originalRoomName.replace(/\s+\d+$/, "").trim();
                 osTitle = `💬 [${fixedRoomName}] 새 메시지`;
                 displayMessage = cleanMessage.replace(`[${originalRoomName}]`, `[${fixedRoomName}]`);
+                osBody = displayMessage; // 본문도 정제된 메시지로 교체
+                roomTag = `room-${fixedRoomName}`; // 방별로 알림 스택을 쌓고 싶다면 방 이름을 태그로!
             }
         } 
         else if (cleanMessage.includes("'")) {
@@ -723,22 +725,44 @@ function showNotificationToast(message) {
                 const fixedRoomName = originalRoomName.replace(/\s+\d+$/, "").trim();
                 osTitle = `📢 [${fixedRoomName}] 초대 알림`;
                 displayMessage = cleanMessage.replace(`'${originalRoomName}'`, `'${fixedRoomName}'`);
+                osBody = displayMessage;
+                roomTag = `invite-${fixedRoomName}`;
             }
         }
     } catch (e) { 
         console.error("알림 방이름 파싱 실패:", e); 
     }
 
-    if (Notification.permission === "granted") {
-        new Notification(osTitle, {
-            icon: "/image/talkking.png", 
-            tag: roomTag,
-            renotify: true
-        });
-    } else if (Notification.permission !== "denied") {
-        Notification.requestPermission();
+    // ────────────────────────────────────────────────────────
+    // 🔔 OS 데스크톱 알림 생성 부분 (안전장치 강화 및 body 추가)
+    // ────────────────────────────────────────────────────────
+    function triggerOSNotification() {
+        try {
+            new Notification(osTitle, {
+                body: osBody,             // 👈 필수! 이게 빠져서 알림이 안 뜨거나 에러가 났을 확률이 높습니다.
+                icon: "/image/talkking.png", 
+                tag: roomTag,             // 고정된 값을 주어야 renotify가 작동합니다.
+                renotify: true
+            });
+        } catch (osError) {
+            // OS 알림에서 에러가 나더라도 콘솔만 찍고, 아래의 토스트 알림과 소켓은 정상 유지됩니다.
+            console.error("❌ OS Notification 생성 중 실패:", osError);
+        }
     }
 
+    if (Notification.permission === "granted") {
+        triggerOSNotification();
+    } else if (Notification.permission !== "denied") {
+        Notification.requestPermission().then(permission => {
+            if (permission === "granted") {
+                triggerOSNotification();
+            }
+        });
+    }
+
+    // ────────────────────────────────────────────────────────
+    // 🎨 브라우저 내부 토스트(Toast) UI 생성 부분 (기존 코드 유지)
+    // ────────────────────────────────────────────────────────
     let container = document.getElementById('toast-container');
     if (!container) {
         container = document.createElement('div');
