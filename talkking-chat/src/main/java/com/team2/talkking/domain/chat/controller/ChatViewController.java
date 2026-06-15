@@ -1,6 +1,5 @@
 package com.team2.talkking.domain.chat.controller;
 
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,75 +9,31 @@ public class ChatViewController {
 
     /**
      * 1. 루트 경로 (/) 관문
-     * 쿠키를 검사하여 토큰이 없으면 주소창을 '/login'으로 리다이렉트 시키고,
-     * 토큰이 유효하게 있으면 주소창을 '/main'으로 확실하게 리다이렉트합니다.
+     * 🔓 프론트엔드가 토큰 유무에 따라 화면 포워딩을 제어할 수 있도록 
+     * 우선은 무조건 메인 화면으로 던져줍니다. (보안은 프론트 최상단 엔진이 통제)
      */
     @GetMapping("/")
-    public String rootPage(HttpServletRequest request) {
-        boolean hasToken = false;
-
-        if (request != null && request.getCookies() != null) {
-            for (Cookie cookie : request.getCookies()) {
-                if (cookie != null && cookie.getName() != null && "accessToken".equals(cookie.getName())) {
-                    if (cookie.getValue() != null && !cookie.getValue().trim().isEmpty()) {
-                        hasToken = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        // 주소창을 깔끔한 URL 경로로 강제 이동시킵니다.
-        if (!hasToken) {
-            return "redirect:/login";
-        }
-
+    public String rootPage() {
         return "redirect:/main"; 
     }
 
     /**
      * 2. 깔끔한 로그인 주소 관문 (/login)
-     * 🎯 주소창에는 무조건 http://localhost:8080/login 만 표시됩니다.
-     * 내부적으로는 forward를 통해 static/login.html의 보라색 디자인을 그대로 서빙합니다.
      */
     @GetMapping("/login")
-    public String loginPage(HttpServletRequest request) {
-        if (request != null && request.getCookies() != null) {
-            for (Cookie cookie : request.getCookies()) {
-                if (cookie != null && cookie.getName() != null && "accessToken".equals(cookie.getName())) {
-                    if (cookie.getValue() != null && !cookie.getValue().trim().isEmpty()) {
-                        return "redirect:/main"; // 이미 로그인되어 있다면 /main으로 튕김
-                    }
-                }
-            }
-        }
+    public String loginPage() {
         return "forward:/login.html";
     }
 
     /**
      * 3. 깔끔한 메인 대시보드 주소 관문 (/main)
-     * 🎯 주소창에는 무조건 http://localhost:8080/main 만 표시됩니다.
-     * 내부적으로는 forward를 통해 static/main.html의 대시보드 화면과 웹소켓 기능을 띄웁니다.
+     * 🎯 [핵심 수정] 자바 서버단에서 토큰을 검사하여 302로 튕겨내던 차단막을 파괴합니다.
+     * 이제 묻지도 따지지도 말고 main.html을 브라우저에 포워딩합니다.
      */
     @GetMapping("/main")
-    public String mainPage(HttpServletRequest request) {
-        boolean hasToken = false;
-
-        if (request != null && request.getCookies() != null) {
-            for (Cookie cookie : request.getCookies()) {
-                if (cookie != null && cookie.getName() != null && "accessToken".equals(cookie.getName())) {
-                    if (cookie.getValue() != null && !cookie.getValue().trim().isEmpty()) {
-                        hasToken = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (!hasToken) {
-            return "redirect:/login"; // 토큰 없으면 로그인 주소로 축출
-        }
-
+    public String mainPage() {
+        // 🔓 검증 로직 제거: 브라우저가 main.html을 읽어야만 
+        // 엑세스 토큰 유실 시 리프레시 토큰으로 자동 재발급(Reissue)하는 JS가 구동될 수 있습니다.
         return "forward:/main.html";
     }
 
