@@ -61,13 +61,21 @@ public class UserController {
     }
 
     /**
-     * 🔄 토큰 재발급(Reissue) 엔드포인트 추가
-     * (기존 SecurityApiController에 둔 내용을 컨트롤러 일원화를 위해 여기 통합하셔도 좋습니다)
+     * 🔄 토큰 재발급(Reissue) 엔드포인트 (반환 포맷 규격 일원화 패치)
      */
     @PostMapping("/reissue")
-    public ResponseEntity<TokenResponseDto> reissue(@RequestBody ReissueRequest requestDto) {
+    public ResponseEntity<Map<String, String>> reissue(@RequestBody ReissueRequest requestDto) {
+        // 1. 기존 서비스를 호출하여 새로운 토큰 더미 DTO를 획득합니다.
         TokenResponseDto tokenResponseDto = tokenService.reissueTokens(requestDto.getRefreshToken());
-        return ResponseEntity.ok(tokenResponseDto);
+        
+        // 2. 🎯 [핵심 패치] 프론트엔드 자바스크립트가 안전하게 꺼낼 수 있도록 Map 객체에 명시적인 Key 포맷팅 처리
+        Map<String, String> response = new HashMap<>();
+        
+        // 💡 본인의 TokenResponseDto 내부 getter 메서드명(getAccessToken 등)에 맞게 매핑하세요.
+        response.put("accessToken", tokenResponseDto.getAccessToken());   // "accessToken" 키 이름 보장
+        response.put("refreshToken", tokenResponseDto.getRefreshToken()); // "refreshToken" 키 이름 보장
+        
+        return ResponseEntity.ok(response);
     }
 
     // 💡 통신용 내부 DTO 클래스들

@@ -118,11 +118,9 @@
 <script>
     let isSignUpMode = false;
 
-    // 🧹 진입 시 기존 LocalStorage 내 토큰 잔재들 깔끔히 청소
+    // 🧹 진입 시 기존 LocalStorage 및 쿠키 내 토큰 잔재들 완전히 리셋
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
-
-    // 💡 쿠키도 사용하지 않으므로 기존 잔재 제거용 로직만 유지
     document.cookie = "accessToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     document.cookie = "refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
 
@@ -174,11 +172,15 @@
 
                 alert('로그인 성공! 메인 화면으로 이동합니다.');
                 
-                // 💾 [변경 핵심] AWS 인프라 환경 영향을 우회하기 위해 두 토큰을 모두 LocalStorage에 스토어합니다.
+                // 💾 1. LocalStorage 동시 백업 저장
                 localStorage.setItem('accessToken', accessToken);
                 localStorage.setItem('refreshToken', refreshToken);
 
-                // 🎯 루트 관문('/')으로 신호를 보내 리다이렉트 통제권을 넘깁니다.
+                // 💾 2. 🔥 [핵심 보완] main.html 파서 엔진이 인식할 수 있도록 브라우저 쿠키 영역에도 명시적으로 저장합니다.
+                document.cookie = `accessToken=${accessToken}; path=/; max-age=1800;`; // 30분
+                document.cookie = `refreshToken=${refreshToken}; path=/; max-age=1209600;`; // 14일
+
+                // 🎯 리다이렉트 통제권을 넘겨 메인 대시보드로 이동시킵니다.
                 setTimeout(() => {
                     location.href = '/main';
                 }, 500);
