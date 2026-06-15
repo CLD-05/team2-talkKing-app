@@ -1,33 +1,56 @@
 // 🎯 [수정] 새로운 백엔드 인증 규칙에 맞게 경로 변경 및 리프레시 토큰 자동 재발급 메커니즘 탑재
-let token = localStorage.getItem('accessToken');
+// 🍪 [쿠키 파서 엔진] 브라우저 쿠키에서 특정 키의 값을 추출합니다.
+function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift().trim();
+    return null;
+}
 
-// 🔒 초기 구동 시 액세스 토큰이 없다면? 리프레시 토큰으로 먼저 살려본다!
+// 🎯 브라우저 쿠키에서 액세스 토큰을 0순위로 획득합니다.
+let token = getCookie('accessToken');
+
+// 🔒 초기 구동 시 액세스 토큰이 만료/유실되었다면, 쿠키에 살아있는 리프레시 토큰을 검증합니다.
 if (!token && window.location.pathname !== '/login') {
-    const refreshToken = localStorage.getItem('refreshToken');
+    const refreshToken = getCookie('refreshToken'); // 🍪 쿠키에서 리프레시 토큰 파싱
     
     if (refreshToken) {
-        console.log("🔄 액세스 토큰 유실 감지. 리프레시 토큰으로 자동 재발급을 시도합니다...");
+        console.log("🔄 [쿠키 엔진] 액세스 토큰 만료 감지. 리프레시 토큰으로 자동 연장을 시도합니다...");
         
-        // 동기식으로 빠르게 재발급 요청 (성공 시 페이지 유지, 실패 시 로그인행)
+        // 백엔드 명세에 맞춰 동기식(XHR)으로 빠르게 재발급 API 호출
         const xhr = new XMLHttpRequest();
-        xhr.open("POST", "/api/users/reissue", false); // 동기식 처리
+        xhr.open("POST", "/api/users/reissue", false); // 동기식 블로킹 처리
         xhr.setRequestHeader("Content-Type", "application/json");
+        
+        // 만약 백엔드가 쿠키를 알아서 읽는 구조라면 그냥 빈 바디를 보내도 되지만, 
+        // 컨트롤러 JSON DTO 매핑 안전성을 위해 기존 Body 구조를 유지하여 전송합니다.
         xhr.send(JSON.stringify({ refreshToken: refreshToken }));
 
         if (xhr.status === 200) {
-            const data = JSON.parse(xhr.responseText);
-            localStorage.setItem('accessToken', data.accessToken);
-            localStorage.setItem('refreshToken', data.refreshToken);
-            token = data.accessToken; // 토큰 변수 재할당 후 정상 기동
-            console.log("✅ 토큰 자동 복구 완료!");
+            // 💡 성공 시 백엔드가 응답 쿠키로 다시 구워줬거나, JSON으로 내려준 토큰 쌍을 매핑합니다.
+            try {
+                const data = JSON.parse(xhr.responseText);
+                
+                // 백엔드가 컨트롤러에서 직접 쿠키를 구워주지 않는 흐름을 대비한 프론트 안전장치 적재
+                document.cookie = `accessToken=${data.accessToken}; path=/; max-age=1800;`;
+                document.cookie = `refreshToken=${data.refreshToken}; path=/; max-age=1209600;`;
+                
+                token = data.accessToken; // 글로벌 토큰 변수에 할당하여 시스템 기동 허용
+                console.log("✅ [쿠키 엔진] 토큰 자동 로테이션(RTR) 성공. 메인 대시보드를 유지합니다.");
+            } catch (e) {
+                // 백엔드가 응답 헤더(Set-Cookie)로만 처리하고 바디가 비어있을 경우의 예외 방어
+                token = getCookie('accessToken');
+                console.log("✅ [인프라 헤더 인증] 쿠키가 브라우저에 자정 반영되었습니다.");
+            }
         } else {
             alert('인증이 만료되었습니다. 다시 로그인해주세요.');
             window.location.href = '/login';
-            throw new Error("인증 만료");
+            throw new Error("인증 자격 증명 수명 만료");
         }
     } else {
+        // 두 토큰 다 없으면 완벽한 비인증 유저이므로 로그인 창 튕구기
         window.location.href = '/login';
-        throw new Error("비인증 유저");
+        throw new Error("비인증 유저 접근 제한");
     }
 }
 
