@@ -21,17 +21,18 @@ public class AlertThrottleServiceRedis {
     private static final String KEY_PREFIX = "alert:throttle:";
 
     /**
-     * Alert을 지금 보낼 수 있는지 확인
-     * @param fingerprint alert의 고유 ID
+     * Alert을 지금 보낼 수 있는지 확인 (Pod 변경 무관)
+     * @param alertName alert 이름
+     * @param namespace 네임스페이스
      * @return true면 알림 가능, false면 10분 내에 이미 보냈음
      */
-    public boolean canNotify(String fingerprint) {
-        if (fingerprint == null || fingerprint.isBlank()) {
-            log.warn("Empty fingerprint provided");
+    public boolean canNotify(String alertName, String namespace) {
+        if (alertName == null || alertName.isBlank() || namespace == null || namespace.isBlank()) {
+            log.warn("Empty alertName or namespace provided");
             return true;
         }
         
-        String key = buildKey(fingerprint);
+        String key = buildKey(alertName, namespace);
         
         try {
             Boolean hasKey = redisTemplate.hasKey(key);
@@ -42,27 +43,28 @@ public class AlertThrottleServiceRedis {
             }
             
             boolean shouldNotify = !hasKey;
-            log.debug("Alert {} canNotify: {}", fingerprint, shouldNotify);
+            log.debug("Alert {}:{} canNotify: {}", alertName, namespace, shouldNotify);
             
             return shouldNotify;
             
         } catch (Exception e) {
-            log.error("Error checking alert throttle for fingerprint: {}", fingerprint, e);
-            return true;  // Redis 오류 시 안전하게 알림 보냄
+            log.error("Error checking alert throttle for alertName: {}, namespace: {}", alertName, namespace, e);
+            return true;
         }
     }
 
     /**
      * Alert 알림 시간을 Redis에 기록
-     * @param fingerprint alert의 고유 ID
+     * @param alertName alert 이름
+     * @param namespace 네임스페이스
      */
-    public void recordNotification(String fingerprint) {
-        if (fingerprint == null || fingerprint.isBlank()) {
-            log.warn("Empty fingerprint provided");
+    public void recordNotification(String alertName, String namespace) {
+        if (alertName == null || alertName.isBlank() || namespace == null || namespace.isBlank()) {
+            log.warn("Empty alertName or namespace provided");
             return;
         }
         
-        String key = buildKey(fingerprint);
+        String key = buildKey(alertName, namespace);
         
         try {
             redisTemplate.opsForValue().set(
@@ -72,15 +74,15 @@ public class AlertThrottleServiceRedis {
                     TimeUnit.MINUTES
             );
             
-            log.info("Alert notification recorded for fingerprint: {} (TTL: {} minutes)", 
-                    fingerprint, THROTTLE_MINUTES);
+            log.info("Alert notification recorded for {}:{} (TTL: {} minutes)", 
+                    alertName, namespace, THROTTLE_MINUTES);
             
         } catch (Exception e) {
-            log.error("Error recording notification for fingerprint: {}", fingerprint, e);
+            log.error("Error recording notification for alertName: {}, namespace: {}", alertName, namespace, e);
         }
     }
 
-    private String buildKey(String fingerprint) {
-        return KEY_PREFIX + fingerprint;
+    private String buildKey(String alertName, String namespace) {
+        return KEY_PREFIX + alertName + ":" + namespace;
     }
 }
