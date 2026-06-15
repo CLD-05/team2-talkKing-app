@@ -6,7 +6,9 @@ import com.team2.talkking.errorops.kubernetes.KubernetesDiagnostics;
 import com.team2.talkking.errorops.slack.SlackNotifier;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import lombok.extern.slf4j.Slf4j;  // ← 추가!
 
+@Slf4j
 @Service
 public class AlertWorkflowService {
 
@@ -14,17 +16,20 @@ public class AlertWorkflowService {
     private final KubernetesDiagnosticService kubernetesDiagnosticService;
     private final GeminiRunbookClient geminiRunbookClient;
     private final SlackNotifier slackNotifier;
+    private final AlertThrottleServiceRedis alertThrottleService;
 
     public AlertWorkflowService(
             AlertContextFactory alertContextFactory,
             KubernetesDiagnosticService kubernetesDiagnosticService,
             GeminiRunbookClient geminiRunbookClient,
-            SlackNotifier slackNotifier
+            SlackNotifier slackNotifier,
+            AlertThrottleServiceRedis alertThrottleService
     ) {
         this.alertContextFactory = alertContextFactory;
         this.kubernetesDiagnosticService = kubernetesDiagnosticService;
         this.geminiRunbookClient = geminiRunbookClient;
         this.slackNotifier = slackNotifier;
+        this.alertThrottleService = alertThrottleService;
     }
 
     public AlertAnalysisResponse handle(AlertmanagerWebhookRequest request) {
@@ -39,12 +44,40 @@ public class AlertWorkflowService {
 
     private AlertAnalysisResponse.AlertResult analyze(AlertmanagerWebhookRequest.Alert alert) {
         AlertContext context = alertContextFactory.from(alert);
+        String fingerprint = context.fingerprint();  // ✅ 추가
+        
+        log.info("Analyzing alert - fingerprint: {}, alertname: {}, pod: {}", 
+                fingerprint, context.alertName(), context.pod());
+        
         KubernetesDiagnostics diagnostics = kubernetesDiagnosticService.collect(context);
         String runbook = geminiRunbookClient.generateRunbook(context, diagnostics);
-        boolean slackSent = slackNotifier.send(context, runbook);
-
+        
+        // ✅ 추가: Redis에서 중복 체크
+        boolean shouldNotify = alertThrottleService.canNotify(fingerprint);
+        log.debug("Alert {} shouldNotify: {}", fingerprint, shouldNotify);
+        
+        boolean slackSent = false;
+        
+        // ✅ 추가: shouldNotify가 true일 때만 알림
+        if (shouldNotify) {
+            try {
+                slackSent = slackNotifier.send(context, runbook);
+                
+                if (slackSent) {
+                    alertThrottleService.recordNotification(fingerprint);  // ✅ 기록
+                    log.info("Slack notification sent for alert: {}", fingerprint);
+                } else {
+                    log.warn("Failed to send Slack notification for alert: {}", fingerprint);
+                }
+            } catch (Exception e) {
+                log.error("Error sending Slack notification for alert: {}", fingerprint, e);
+            }
+        } else {
+            log.debug("Alert {} throttled - less than 10 minutes since last notification", fingerprint);
+        }
+        
         return new AlertAnalysisResponse.AlertResult(
-                context.fingerprint(),
+                fingerprint,
                 context.alertName(),
                 context.namespace(),
                 context.pod(),
