@@ -17,8 +17,8 @@ spring:
     # 🎯 [오류 수정]: ConfigMap의 SPRING_DATASOURCE_URL 변수명과 일치하도록 교정했습니다.
     # 환경 변수가 없으면(로컬 dev) 콜론(:) 뒤의 localhost 주소를 바라봅니다.
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/talkking?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul}
-    username: ${DATABASE_USERNAME:root} 
-    password: ${DATABASE_PASSWORD:password}
+    username: ${SPRING_DATASOURCE_USERNAME:root} 
+    password: ${SPRING_DATASOURCE_PASSWORD:password}
 
   jpa:
     hibernate:
