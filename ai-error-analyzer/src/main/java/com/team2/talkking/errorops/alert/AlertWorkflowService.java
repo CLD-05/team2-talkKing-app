@@ -6,7 +6,9 @@ import com.team2.talkking.errorops.kubernetes.KubernetesDiagnostics;
 import com.team2.talkking.errorops.slack.SlackNotifier;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import lombok.extern.slf4j.Slf4j;  // ← 추가!
 
+@Slf4j
 @Service
 public class AlertWorkflowService {
 
