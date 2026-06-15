@@ -63,4 +63,11 @@ public class RedisConfig {
         redisTemplate.setValueSerializer(new Jackson2JsonRedisSerializer<>(Object.class));
         return redisTemplate;
     }
+//    단순 문자열(Key=userId, Value=refreshToken) 구조이기 때문에, 무거운 JSON 직렬화 과정이 없는 StringRedisTemplate을 사용하는 것이 메모리와 속도 측면에서 유리
+    @Bean
+    public org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate(RedisConnectionFactory connectionFactory) {
+        org.springframework.data.redis.core.StringRedisTemplate template = new org.springframework.data.redis.core.StringRedisTemplate();
+        template.setConnectionFactory(connectionFactory);
+        return template;
+    }
 }
