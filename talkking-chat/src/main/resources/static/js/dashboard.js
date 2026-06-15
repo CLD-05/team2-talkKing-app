@@ -1,11 +1,33 @@
-// 🎯 [수정] 확장자 .html이 없는 새로운 백엔드 인증 규칙에 맞게 경로 변경 및 무한 리다이렉트 방어
-const token = localStorage.getItem('accessToken');
-if (!token) {
-    // ⚠️ [EKS 인프라 방어] 현재 위치가 이미 로그인 페이지라면 리다이렉트 루프를 타지 않도록 방어합니다.
-    if (window.location.pathname !== '/login') {
-        alert('로그인이 필요한 서비스입니다.');
+// 🎯 [수정] 새로운 백엔드 인증 규칙에 맞게 경로 변경 및 리프레시 토큰 자동 재발급 메커니즘 탑재
+let token = localStorage.getItem('accessToken');
+
+// 🔒 초기 구동 시 액세스 토큰이 없다면? 리프레시 토큰으로 먼저 살려본다!
+if (!token && window.location.pathname !== '/login') {
+    const refreshToken = localStorage.getItem('refreshToken');
+    
+    if (refreshToken) {
+        console.log("🔄 액세스 토큰 유실 감지. 리프레시 토큰으로 자동 재발급을 시도합니다...");
+        
+        // 동기식으로 빠르게 재발급 요청 (성공 시 페이지 유지, 실패 시 로그인행)
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/users/reissue", false); // 동기식 처리
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.send(JSON.stringify({ refreshToken: refreshToken }));
+
+        if (xhr.status === 200) {
+            const data = JSON.parse(xhr.responseText);
+            localStorage.setItem('accessToken', data.accessToken);
+            localStorage.setItem('refreshToken', data.refreshToken);
+            token = data.accessToken; // 토큰 변수 재할당 후 정상 기동
+            console.log("✅ 토큰 자동 복구 완료!");
+        } else {
+            alert('인증이 만료되었습니다. 다시 로그인해주세요.');
+            window.location.href = '/login';
+            throw new Error("인증 만료");
+        }
+    } else {
         window.location.href = '/login';
-        throw new Error("인증 토큰 유실로 인한 기동 중단"); 
+        throw new Error("비인증 유저");
     }
 }
 
@@ -561,11 +583,16 @@ async function exitChatRoom(roomId) {
 function logout() {
     if (!confirm("로그아웃 하시겠습니까?")) return;
     
+    // 1. LocalStorage 청소
     localStorage.removeItem('accessToken'); 
+    localStorage.removeItem('refreshToken'); // 🔥 리프레시 토큰도 확실히 삭제
+    
+    // 2. 쿠키 잔재 청소
     document.cookie = "accessToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    document.cookie = "refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     
     alert("로그아웃 되었습니다. 로그인 페이지로 이동합니다.");
-    window.location.href = '/login'; 
+    window.location.href = '/login';
 }
 
 function sendMessage() {
