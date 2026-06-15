@@ -14,7 +14,9 @@ Alertmanager webhook receiver for TalkKing error operations.
 
 ```properties
 GEMINI_API_KEY=
-SLACK_WEBHOOK_URL=
+SLACK_CRITICAL_WEBHOOK_URL=
+SLACK_WARNING_WEBHOOK_URL=
+SLACK_INFO_WEBHOOK_URL=
 ```
 
 Optional application properties:
@@ -25,7 +27,8 @@ errorops.gemini.model=gemini-1.5-flash
 ```
 
 If `GEMINI_API_KEY` is empty, the app returns a fallback runbook.
-If `SLACK_WEBHOOK_URL` is empty, Slack sending is skipped.
+If the severity-specific Slack webhook is empty, warning and info alerts fall back to the critical webhook.
+If `SLACK_CRITICAL_WEBHOOK_URL` is empty, Slack sending is skipped.
 
 ## Local Endpoints
 

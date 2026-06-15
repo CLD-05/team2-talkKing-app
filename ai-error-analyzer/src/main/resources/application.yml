@@ -2,9 +2,9 @@ spring:
   application:
     name: ai-error-analyzer
   redis:
-    host: ${REDIS_HOST}
+    host: ${REDIS_HOST:team2-talkking-dev-redis-001.9iaedf.0001.apn2.cache.amazonaws.com}
     port: ${REDIS_PORT:6379}
-    password: ${REDIS_PASSWORD}
+    password: ${REDIS_PASSWORD:}
     timeout: 2000ms
     jedis:
       pool:
@@ -37,7 +37,9 @@ errorops:
     model: ${GEMINI_MODEL:gemini-flash-latest}
     api-key: ${GEMINI_API_KEY:}
   slack:
-    webhook-url: ${SLACK_WEBHOOK_URL:}
+    critical-webhook-url: ${SLACK_CRITICAL_WEBHOOK_URL:}
+    warning-webhook-url: ${SLACK_WARNING_WEBHOOK_URL:}
+    info-webhook-url: ${SLACK_INFO_WEBHOOK_URL:}
 
 
 

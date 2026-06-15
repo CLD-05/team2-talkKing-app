@@ -11,18 +11,25 @@ import org.springframework.web.reactive.function.client.WebClient;
 public class SlackNotifier {
 
     private final WebClient webClient;
-    private final String webhookUrl;
+    private final String criticalWebhookUrl;
+    private final String warningWebhookUrl;
+    private final String infoWebhookUrl;
 
     public SlackNotifier(
             WebClient.Builder webClientBuilder,
-            @Value("${errorops.slack.webhook-url:}") String webhookUrl
+            @Value("${errorops.slack.critical-webhook-url:}") String criticalWebhookUrl,
+            @Value("${errorops.slack.warning-webhook-url:}") String warningWebhookUrl,
+            @Value("${errorops.slack.info-webhook-url:}") String infoWebhookUrl
     ) {
         this.webClient = webClientBuilder.build();
-        this.webhookUrl = webhookUrl;
+        this.criticalWebhookUrl = criticalWebhookUrl;
+        this.warningWebhookUrl = warningWebhookUrl;
+        this.infoWebhookUrl = infoWebhookUrl;
     }
 
     public boolean send(AlertContext context, String runbook) {
-        if (webhookUrl == null || webhookUrl.isBlank()) {
+        String selectedWebhookUrl = selectWebhookUrl(context);
+        if (selectedWebhookUrl == null || selectedWebhookUrl.isBlank()) {
             return false;
         }
 
@@ -42,7 +49,7 @@ public class SlackNotifier {
 
         try {
             webClient.post()
-                    .uri(webhookUrl)
+                    .uri(selectedWebhookUrl)
                     .bodyValue(Map.of("text", message))
                     .retrieve()
                     .toBodilessEntity()
@@ -52,5 +59,25 @@ public class SlackNotifier {
         } catch (Exception exception) {
             return false;
         }
+    }
+
+    private String selectWebhookUrl(AlertContext context) {
+        String severity = context.severity() == null ? "" : context.severity().toLowerCase();
+
+        return switch (severity) {
+            case "warning" -> firstNonBlank(warningWebhookUrl, criticalWebhookUrl);
+            case "info" -> firstNonBlank(infoWebhookUrl, criticalWebhookUrl);
+            case "critical" -> criticalWebhookUrl;
+            default -> criticalWebhookUrl;
+        };
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
     }
 }
