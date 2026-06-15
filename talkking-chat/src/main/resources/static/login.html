@@ -118,9 +118,11 @@
 <script>
     let isSignUpMode = false;
 
-    // 🧹 초기화 시 기존 토큰 잔재들 깔끔히 삭제
+    // 🧹 진입 시 기존 LocalStorage 내 토큰 잔재들 깔끔히 청소
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
+
+    // 💡 쿠키도 사용하지 않으므로 기존 잔재 제거용 로직만 유지
     document.cookie = "accessToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     document.cookie = "refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
 
@@ -161,9 +163,8 @@
                 alert('회원가입 성공! 로그인 모드로 전환합니다.');
                 toggleMode();
             } else {
-                const responseData = await response.json(); // 🎯 응답을 JSON 객체로 파싱
+                const responseData = await response.json();
                 
-                // 🔄 백엔드가 주는 두 개의 토큰 파싱
                 const accessToken = responseData.accessToken;
                 const refreshToken = responseData.refreshToken;
 
@@ -173,15 +174,11 @@
 
                 alert('로그인 성공! 메인 화면으로 이동합니다.');
                 
-                // 💾 1. Access Token 저장 (기존 스펙 보존 유지)
+                // 💾 [변경 핵심] AWS 인프라 환경 영향을 우회하기 위해 두 토큰을 모두 LocalStorage에 스토어합니다.
                 localStorage.setItem('accessToken', accessToken);
-                document.cookie = `accessToken=${accessToken}; path=/; max-age=1800;`; // 🕒 만료시간 30분(1800초)으로 매핑
-                
-                // 💾 2. 🔥 [추가] Refresh Token 쿠키 저장
-                // (만약 백엔드에서 자체적으로 HttpOnly 쿠키를 심어주지 않는 아키텍처라면 JS에서 구워줍니다)
-                document.cookie = `refreshToken=${refreshToken}; path=/; max-age=1209600;`; // 🕒 만료시간 14일(1209600초)로 매핑
+                localStorage.setItem('refreshToken', refreshToken);
 
-                // 🎯 끄트머리 .html 없이 무조건 백엔드 루트 관문('/')으로 신호를 보냅니다.
+                // 🎯 루트 관문('/')으로 신호를 보내 리다이렉트 통제권을 넘깁니다.
                 setTimeout(() => {
                     location.href = '/';
                 }, 500);

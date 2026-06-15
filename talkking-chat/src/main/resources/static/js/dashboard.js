@@ -1,10 +1,34 @@
-// 🎯 [수정] 확장자 .html이 없는 새로운 백엔드 인증 규칙에 맞게 경로 변경
-const token = localStorage.getItem('accessToken');
-if (!token) {
-    alert('로그인이 필요한 서비스입니다.');
-    location.href = '/login';
-    // 스크립트가 더 이상 아래로 실행되지 않도록 강제 종료
-    throw new Error("인증 토큰 유실로 인한 기동 중단"); 
+// 🎯 [수정] 새로운 백엔드 인증 규칙에 맞게 경로 변경 및 리프레시 토큰 자동 재발급 메커니즘 탑재
+let token = localStorage.getItem('accessToken');
+
+// 🔒 초기 구동 시 액세스 토큰이 없다면? 리프레시 토큰으로 먼저 살려본다!
+if (!token && window.location.pathname !== '/login') {
+    const refreshToken = localStorage.getItem('refreshToken');
+    
+    if (refreshToken) {
+        console.log("🔄 액세스 토큰 유실 감지. 리프레시 토큰으로 자동 재발급을 시도합니다...");
+        
+        // 동기식으로 빠르게 재발급 요청 (성공 시 페이지 유지, 실패 시 로그인행)
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/users/reissue", false); // 동기식 처리
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.send(JSON.stringify({ refreshToken: refreshToken }));
+
+        if (xhr.status === 200) {
+            const data = JSON.parse(xhr.responseText);
+            localStorage.setItem('accessToken', data.accessToken);
+            localStorage.setItem('refreshToken', data.refreshToken);
+            token = data.accessToken; // 토큰 변수 재할당 후 정상 기동
+            console.log("✅ 토큰 자동 복구 완료!");
+        } else {
+            alert('인증이 만료되었습니다. 다시 로그인해주세요.');
+            window.location.href = '/login';
+            throw new Error("인증 만료");
+        }
+    } else {
+        window.location.href = '/login';
+        throw new Error("비인증 유저");
+    }
 }
 
 let stompClient = null;
@@ -20,49 +44,57 @@ let isChatLoading = false;
 const chatPageSize = 20;
 const realTimeLastMessages = {};
 
-try {
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const payload = JSON.parse(window.atob(base64));
-    myRealUserId = payload.userId || payload.id || payload.sub || payload.username;
-    console.log("🔓 내 로그인 ID 확인 완료:", myRealUserId);
-} catch (e) { console.error("토큰 해독 실패:", e); }
+// 🔓 JWT 토큰 해독 및 내부 유저 식별자 추출
+if (token) {
+    try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const payload = JSON.parse(window.atob(base64));
+        myRealUserId = payload.userId || payload.id || payload.sub || payload.username;
+        console.log("🔓 내 로그인 ID 확인 완료:", myRealUserId);
+    } catch (e) { 
+        console.error("토큰 해독 실패:", e); 
+    }
+}
 
 document.addEventListener("DOMContentLoaded", () => {
-    console.log("🚀 [초기화 엔진] 시스템 기동 완료. 최초 방 목록 동기화를 시작합니다.");
-    
-    loadMyChatRooms().then(() => {
-        setTimeout(() => {
-            console.log("🤖 [폴링 엔진 활성화] 4초 주기 백그라운드 초대 감시를 시작합니다.");
-            setInterval(async () => {
-                try {
-                    if (stompClient === null || !stompClient.connected) return;
+    // 로그인 페이지가 아닐 때만 대시보드 엔진 가동
+    if (window.location.pathname !== '/login' && token) {
+        console.log("🚀 [초기화 엔진] 시스템 기동 완료. 최초 방 목록 동기화를 시작합니다.");
+        
+        loadMyChatRooms().then(() => {
+            setTimeout(() => {
+                console.log("🤖 [폴링 엔진 활성화] 4초 주기 백그라운드 초대 감시를 시작합니다.");
+                setInterval(async () => {
+                    try {
+                        if (stompClient === null || !stompClient.connected) return;
 
-                    const response = await fetch('/api/chat/rooms', {
-                        method: 'GET',
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    const rooms = await response.json();
-                    
-                    rooms.forEach(room => {
-                        if (!activeSubscriptions[room.roomId]) {
-                            console.log(`📢 [실시간 폴링 감지] #${room.roomId}번 방 신규 초대 포착!`);
-                            subscribeToRoom(room.roomId);
-                            loadMyChatRooms(); 
-                        }
-                    });
-                } catch (e) { console.error("백그라운드 방 동기화 에러:", e); }
-            }, 4000);
-        }, 3000); 
-    });
+                        const response = await fetch('/api/chat/rooms', {
+                            method: 'GET',
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        const rooms = await response.json();
+                        
+                        rooms.forEach(room => {
+                            if (!activeSubscriptions[room.roomId]) {
+                                console.log(`📢 [실시간 폴링 감지] #${room.roomId}번 방 신규 초대 포착!`);
+                                subscribeToRoom(room.roomId);
+                                loadMyChatRooms(); 
+                            }
+                        });
+                    } catch (e) { console.error("백그라운드 방 동기화 에러:", e); }
+                }, 4000);
+            }, 3000); 
+        });
+    }
 });
 
 function connectWebSocket(roomList) {
     const rooms = roomList || [];
 
     function connectChatServer() {
-        // 🔥 [주소 버그 해결] localhost:8080을 지우고 인그레스 규칙에 맞는 상대 경로로 변경합니다.
-        const chatSocket = new SockJS('/ws'); 
+        // 🔥 [AWS EKS 인프라 패치] ALB 스케일 아웃 시 세션이 튀는 현상을 막기 위해 순수 websocket 프로토콜만 사용하도록 제한 규칙을 추가합니다.
+        const chatSocket = new SockJS('/ws', null, {transports: ['websocket']}); 
         stompClient = Stomp.over(chatSocket);
         stompClient.debug = null; 
 
@@ -77,8 +109,8 @@ function connectWebSocket(roomList) {
 
     connectChatServer();
 
-    // 🔥 [주소 버그 해결] localhost:8081을 지우고 동일하게 사설 망 분기 상대 경로로 변경합니다.
-    const notifSocket = new SockJS('/ws-notif');
+    // 🔥 [AWS EKS 인프라 패치] 알림 서버 소켓 인그레스 분기망 동기화 규칙 적용
+    const notifSocket = new SockJS('/ws-notif', null, {transports: ['websocket']});
     const notifClient = Stomp.over(notifSocket);
     notifClient.debug = null;
 
@@ -187,7 +219,6 @@ function subscribeToRoom(roomId) {
             if (Number(currentRoomId) === Number(roomId)) {
                 unreadCounts[roomId] = 0;
             } else {
-                // 실서버 API가 0으로 덮어쓰는 걸 방지하기 위해 기존 화면에 뜬 숫자가 있다면 그걸 기반으로 덧셈
                 const badgeTarget = document.getElementById(`badge-${roomId}`);
                 if (badgeTarget && badgeTarget.style.display !== "none") {
                     unreadCounts[roomId] = Number(badgeTarget.innerText) + 1;
@@ -199,18 +230,14 @@ function subscribeToRoom(roomId) {
             unreadCounts[roomId] = 0;
         }
         
-        // 2. 마지막 메시지 텍스트 즉시 변경
         const receivedText = messageBody.message || messageBody.content || "";
         realTimeLastMessages[roomId] = receivedText;
 
         const lastMsgTarget = document.getElementById(`last-msg-${roomId}`);
         if (lastMsgTarget) lastMsgTarget.innerText = receivedText;
 
-        // 3. 🔔 서버 API를 호출하지 않고, 순수 자바스크립트로 화면 배지 숫자 강제 업데이트
         updateBadgeUI(roomId);
 
-        // 4. 🔥 [핵심] loadMyChatRooms()를 절대 호출하지 마세요! (파드가 튀어서 숫자 덮어쓰는 주범)
-        // 대신 화면에 있는 방 엘리먼트 순서만 맨 위로 올려줍니다.
         const roomItemEl = document.getElementById(`room-item-${roomId}`);
         const roomListDiv = document.getElementById('room-list');
         if (roomItemEl && roomListDiv) {
@@ -297,6 +324,8 @@ async function selectChatRoom(roomId, title) {
     updateBadgeUI(roomId);
 
     const mainBody = document.getElementById('chat-main-body');
+    if (!mainBody) return;
+
     mainBody.innerHTML = `
         <div class="chat-content">
             <div class="chat-header">
@@ -342,14 +371,16 @@ async function selectChatRoom(roomId, title) {
         });
         const participants = await response.json();
         const pListDiv = document.getElementById('participant-list');
-        pListDiv.innerHTML = ''; 
-        participants.forEach(p => {
-            const pItem = document.createElement('div');
-            pItem.className = 'participant-item';
-            const isMeMark = (String(myRealUserId) === String(p.userId)) ? ' <span style="font-size:11px; color: var(--primary); font-weight:bold;">(나)</span>' : '';
-            pItem.innerHTML = `<i class="fa-regular fa-user" style="color:var(--text-muted); font-size:12px;"></i> <strong>${p.nickname}</strong>${isMeMark}`;
-            pListDiv.appendChild(pItem);
-        });
+        if (pListDiv) {
+            pListDiv.innerHTML = ''; 
+            participants.forEach(p => {
+                const pItem = document.createElement('div');
+                pItem.className = 'participant-item';
+                const isMeMark = (String(myRealUserId) === String(p.userId)) ? ' <span style="font-size:11px; color: var(--primary); font-weight:bold;">(나)</span>' : '';
+                pItem.innerHTML = `<i class="fa-regular fa-user" style="color:var(--text-muted); font-size:12px;"></i> <strong>${p.nickname}</strong>${isMeMark}`;
+                pListDiv.appendChild(pItem);
+            });
+        }
     } catch (error) { console.error(error); }
 }
 
@@ -549,21 +580,19 @@ async function exitChatRoom(roomId) {
     } catch (e) { alert("오류 발생: " + e.message); }
 }
 
-// 🎯 [로그아웃 무한루프 해결 버전]
 function logout() {
     if (!confirm("로그아웃 하시겠습니까?")) return;
     
-    // 1. 프론트엔드 로컬 스토리지 토큰 삭제
+    // 1. LocalStorage 청소
     localStorage.removeItem('accessToken'); 
+    localStorage.removeItem('refreshToken'); // 🔥 리프레시 토큰도 확실히 삭제
     
-    // 2. 🔥 [핵심 추가] 백엔드 라우팅 관문용 쿠키(Cookie)도 확실하게 만료시켜 삭제합니다.
-    // 만료일을 과거(1970년)로 세팅하고 반드시 path=/ 를 명시해야 완벽하게 증발합니다.
+    // 2. 쿠키 잔재 청소
     document.cookie = "accessToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    document.cookie = "refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     
     alert("로그아웃 되었습니다. 로그인 페이지로 이동합니다.");
-    
-    // 3. 쿠키와 스토리지가 모두 청소된 상태에서 깔끔하게 로그인 클린 URL로 튕겨냅니다.
-    location.href = '/login'; 
+    window.location.href = '/login';
 }
 
 function sendMessage() {
@@ -640,6 +669,7 @@ async function searchUsers() {
         });
         const users = await response.json();
         const resultBox = document.getElementById('search-results');
+        if (!resultBox) return;
         resultBox.innerHTML = '';
         if (users.length === 0) {
             resultBox.innerHTML = '<p style="text-align: center; color: #aaa; margin-top: 30px; font-size:13px;">검색 결과가 없습니다.</p>';
@@ -717,10 +747,9 @@ function showNotificationToast(message) {
     console.log("📢 [알림 엔진 가동 날것 데이터]:", message);
 
     let cleanMessage = message.replace(/[\r\n]+/g, " ").trim();
-
     let osTitle = "💬 TalkKing 새 메시지";
-    let osBody = cleanMessage; // 👈 OS 알림창에 들어갈 실제 본문 내용
-    let roomTag = "talkking-chat-room"; // 👈 renotify를 위해 일관된 태그나 방 ID 권장
+    let osBody = cleanMessage; 
+    let roomTag = "talkking-chat-room"; 
     let displayMessage = cleanMessage; 
 
     try {
@@ -731,8 +760,8 @@ function showNotificationToast(message) {
                 const fixedRoomName = originalRoomName.replace(/\s+\d+$/, "").trim();
                 osTitle = `💬 [${fixedRoomName}] 새 메시지`;
                 displayMessage = cleanMessage.replace(`[${originalRoomName}]`, `[${fixedRoomName}]`);
-                osBody = displayMessage; // 본문도 정제된 메시지로 교체
-                roomTag = `room-${fixedRoomName}`; // 방별로 알림 스택을 쌓고 싶다면 방 이름을 태그로!
+                osBody = displayMessage; 
+                roomTag = `room-${fixedRoomName}`; 
             }
         } 
         else if (cleanMessage.includes("'")) {
@@ -750,19 +779,15 @@ function showNotificationToast(message) {
         console.error("알림 방이름 파싱 실패:", e); 
     }
 
-    // ────────────────────────────────────────────────────────
-    // 🔔 OS 데스크톱 알림 생성 부분 (안전장치 강화 및 body 추가)
-    // ────────────────────────────────────────────────────────
     function triggerOSNotification() {
         try {
             new Notification(osTitle, {
-                body: osBody,             // 👈 필수! 이게 빠져서 알림이 안 뜨거나 에러가 났을 확률이 높습니다.
+                body: osBody,             
                 icon: "/image/talkking.png", 
-                tag: roomTag,             // 고정된 값을 주어야 renotify가 작동합니다.
+                tag: roomTag,             
                 renotify: true
             });
         } catch (osError) {
-            // OS 알림에서 에러가 나더라도 콘솔만 찍고, 아래의 토스트 알림과 소켓은 정상 유지됩니다.
             console.error("❌ OS Notification 생성 중 실패:", osError);
         }
     }
@@ -777,9 +802,6 @@ function showNotificationToast(message) {
         });
     }
 
-    // ────────────────────────────────────────────────────────
-    // 🎨 브라우저 내부 토스트(Toast) UI 생성 부분 (기존 코드 유지)
-    // ────────────────────────────────────────────────────────
     let container = document.getElementById('toast-container');
     if (!container) {
         container = document.createElement('div');
