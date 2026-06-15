@@ -56,6 +56,9 @@ public class SecurityConfig {
                     "/api/users/login",
                     "/api/users/reissue", // 리프레시 토큰 허용
                     "/api/chat/**",        // 채팅 API 레이어 허용
+                    "/api/users/reissue", // 🔥 [추가] 리프레시 토큰을 통한 토큰 재발급 API는 인증 없이 접근 가능해야 합니다.
+                    "/api/chat/**",        // 채팅 API 레이어 허용 유지
+                    "/api/test/**",
                     "/css/**", "/js/**", "/images/**", "/favicon.ico",
                     "/ws", "/ws/**",
                     "/ws-notif", "/ws-notif/**"
