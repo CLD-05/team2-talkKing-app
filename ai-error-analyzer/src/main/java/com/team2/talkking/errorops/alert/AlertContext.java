@@ -7,6 +7,7 @@ public record AlertContext(
         String alertName,
         String namespace,
         String pod,
+        String workload,
         String container,
         String severity,
         String summary,

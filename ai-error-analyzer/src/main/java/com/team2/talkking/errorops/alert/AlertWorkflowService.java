@@ -46,15 +46,21 @@ public class AlertWorkflowService {
         AlertContext context = alertContextFactory.from(alert);
         String fingerprint = context.fingerprint();
         
-        log.info("Analyzing alert - fingerprint: {}, alertname: {}, pod: {}", 
-                fingerprint, context.alertName(), context.pod());
+        log.info("Analyzing alert - fingerprint: {}, alertname: {}, workload: {}, pod: {}", 
+                fingerprint, context.alertName(), context.workload(), context.pod());
         
         KubernetesDiagnostics diagnostics = kubernetesDiagnosticService.collect(context);
         String runbook = geminiRunbookClient.generateRunbook(context, diagnostics);
         
-        // ✅ 수정: alertName과 namespace로 중복 체크 (Pod 무관)
-        boolean shouldNotify = alertThrottleService.canNotify(context.alertName(), context.namespace());
-        log.debug("Alert {}:{} shouldNotify: {}", context.alertName(), context.namespace(), shouldNotify);
+        // ✅ 수정: alertName + namespace + workload + container 기반 중복 체크
+        boolean shouldNotify = alertThrottleService.canNotify(
+            context.alertName(), 
+            context.namespace(), 
+            context.workload(),     // ← 추가!
+            context.container()     // ← 추가!
+        );
+        log.debug("Alert {}:{}:{}:{} shouldNotify: {}", 
+            context.alertName(), context.namespace(), context.workload(), context.container(), shouldNotify);
         
         boolean slackSent = false;
         
@@ -63,8 +69,13 @@ public class AlertWorkflowService {
                 slackSent = slackNotifier.send(context, runbook);
                 
                 if (slackSent) {
-                    // ✅ 수정: alertName과 namespace로 기록
-                    alertThrottleService.recordNotification(context.alertName(), context.namespace());
+                    // ✅ 수정: workload + container 기반으로 기록
+                    alertThrottleService.recordNotification(
+                        context.alertName(), 
+                        context.namespace(), 
+                        context.workload(),     // ← 추가!
+                        context.container()     // ← 추가!
+                    );
                     log.info("Slack notification sent for alert: {}", fingerprint);
                 } else {
                     log.warn("Failed to send Slack notification for alert: {}", fingerprint);
@@ -73,7 +84,8 @@ public class AlertWorkflowService {
                 log.error("Error sending Slack notification for alert: {}", fingerprint, e);
             }
         } else {
-            log.debug("Alert {}:{} throttled - less than 10 minutes since last notification", context.alertName(), context.namespace());
+            log.info("Alert {}:{}:{}:{} throttled - less than 10 minutes since last notification", 
+                context.alertName(), context.namespace(), context.workload(), context.container());
         }
         
         return new AlertAnalysisResponse.AlertResult(
