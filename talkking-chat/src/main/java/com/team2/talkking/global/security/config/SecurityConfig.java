@@ -36,6 +36,12 @@ public class SecurityConfig {
             .formLogin(form -> form.disable())
             .httpBasic(basic -> basic.disable())
             
+            // 📌 JWT 인증을 위한 Session Creation Policy를 STATELESS로 설정하는 것이 좋습니다.
+            // (세션을 서버에 생성하지 않고 토큰으로만 인증하기 위함)
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(org.springframework.security.config.http.SessionCreationPolicy.STATELESS)
+            )
+            
             // 3. URL별 권한 관리
             .authorizeHttpRequests(authorize -> authorize
                 .requestMatchers(
@@ -47,6 +53,7 @@ public class SecurityConfig {
                     "/signup.html",
                     "/api/users/signup", 
                     "/api/users/login",
+                    "/api/users/reissue", // 🔥 [추가] 리프레시 토큰을 통한 토큰 재발급 API는 인증 없이 접근 가능해야 합니다.
                     "/api/chat/**",        // 채팅 API 레이어 허용 유지
                     "/api/test/**",
                     "/css/**", "/js/**", "/images/**", "/favicon.ico",
@@ -54,7 +61,9 @@ public class SecurityConfig {
                     "/ws-notif", "/ws-notif/**"
                 ).permitAll()
                 
-                .anyRequest().permitAll()
+                // 💡 추후 인증이 필요한 다른 API들을 보호하려면 아래를 .authenticated()로 바꾸고 
+                // JwtAuthenticationFilter를 .addFilterBefore()로 등록하게 됩니다.
+                .anyRequest().permitAll() 
             );
             
         return http.build();

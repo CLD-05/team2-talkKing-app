@@ -54,6 +54,6 @@ public class UserService {
         }
 
         // 3. 로그인 성공! 유저 고유 ID(PK)와 닉네임을 품은 JWT 토큰 발행
-        return jwtProvider.createToken(user.getUserId(), user.getUsername(), user.getNickname());
+        return jwtProvider.createAccessToken(user.getUserId(), user.getUsername(), user.getNickname());
     }
 }

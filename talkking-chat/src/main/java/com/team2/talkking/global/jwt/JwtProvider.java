@@ -15,40 +15,53 @@ import java.util.Date;
 @Component
 public class JwtProvider {
 
-    // 💡 application.yml에 등록해서 쓸 비밀키 (최소 32글자 이상의 임의의 문자열)
     @Value("${jwt.secret:defaultSecretKeyForTalkKingMessengerSystem2026}")
     private String secretKeyString;
 
-    // 토큰 만료 시간 (기본 1일 = 24시간)
-    private final long tokenValidityInMilliseconds = 1000L * 60 * 60 * 24;
+    // 🕒 토큰 만료 시간 분리 설정
+    private final long accessTokenValidityInMilliseconds = 1000L * 60 * 30;  // 30분
+    private final long refreshTokenValidityInMilliseconds = 1000L * 60 * 60 * 24 * 14; // 14일 (2주)
 
     private SecretKey key;
 
     @PostConstruct
     protected void init() {
-        // 비밀키 문자열을 복호화 알고리즘에 쓸 SecretKey 객체로 변환
         this.key = Keys.hmacShaKeyFor(secretKeyString.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
-     * 🎫 유저 정보를 기반으로 JWT 토큰을 생성합니다.
+     * 🎫 1. Access Token 생성 (기존 createToken 메서드명 유지 및 시간 변경)
+     * 유저의 식별 정보와 권한 정보(Claims)를 가득 담아 보안 필터에서 활용합니다.
      */
-    /**
-     * 🎫 유저 정보를 기반으로 JWT 토큰을 생성합니다.
-     */
-    public String createToken(Long userId, String username, String nickname) {
+    public String createAccessToken(Long userId, String username, String nickname) {
         Date now = new Date();
-        Date validity = new Date(now.getTime() + tokenValidityInMilliseconds);
+        Date validity = new Date(now.getTime() + accessTokenValidityInMilliseconds);
 
-        // 🎯 [핵심] 기존의 Jwts.claims().build() 인스턴스를 거치지 않고 빌더에 다이렉트로 주입합니다.
         return Jwts.builder()
-                .subject(username)           // 토큰의 식별자 아이디 명시
-                .claim("userId", userId)     // 큐 저장용 유저 고유 PK 주입
-                .claim("nickname", nickname) // 화면 표시용 닉네임 주입
-                .issuedAt(now)               // 발행 시간 설정
-                .expiration(validity)        // 만료 시간 설정
-                .signWith(key)               // 암호화 서명 키 주입
-                .compact();                  // 최종 문자열 압축 발행
+                .subject(username)
+                .claim("userId", userId)
+                .claim("nickname", nickname)
+                .issuedAt(now)
+                .expiration(validity)
+                .signWith(key)
+                .compact();
+    }
+
+    /**
+     * 🔄 2. Refresh Token 생성 (새로 추가)
+     * 유저 정보는 최소화(userId 정도만)하고, 만료 시간만 길게 잡아 토큰 재발급 용도로만 씁니다.
+     */
+    public String createRefreshToken(Long userId) {
+        Date now = new Date();
+        Date validity = new Date(now.getTime() + refreshTokenValidityInMilliseconds);
+
+        return Jwts.builder()
+                .subject(String.valueOf(userId)) // 리프레시 토큰은 주체를 userId로 세팅하면 Redis 조회 시 편리합니다.
+                .claim("userId", userId)
+                .issuedAt(now)
+                .expiration(validity)
+                .signWith(key)
+                .compact();
     }
 
     /**
@@ -88,5 +101,18 @@ public class JwtProvider {
                 .parseSignedClaims(token)
                 .getPayload()
                 .get("nickname", String.class);
+    }
+    
+    /**
+     * 🕒 (선택 추가) Redis 저장 시 편리하도록 리프레시 토큰의 남은 만료 시간(초 단위)을 계산합니다.
+     */
+    public long getExpirationSeconds(String token) {
+        Date expiration = Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload()
+                .getExpiration();
+        return (expiration.getTime() - System.currentTimeMillis()) / 1000;
     }
 }
