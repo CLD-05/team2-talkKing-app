@@ -2,7 +2,7 @@ spring:
   application:
     name: ai-error-analyzer
   redis:
-    host: ${REDIS_HOST:team2-talkking-dev-redis-001.9iaedf.0001.apn2.cache.amazonaws.com}
+    host: ${REDIS_HOST:team2-talkking-dev-redis.9iaedf.ng.0001.apn2.cache.amazonaws.com}
     port: ${REDIS_PORT:6379}
     password: ${REDIS_PASSWORD:}
     timeout: 2000ms
