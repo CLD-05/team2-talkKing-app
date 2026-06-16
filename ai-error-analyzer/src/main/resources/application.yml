@@ -45,6 +45,7 @@ management:
 errorops:
   kubernetes:
     log-tail-lines: 120
+    event-limit: 20
 
   gemini:
     model: ${GEMINI_MODEL:gemini-flash-latest}
