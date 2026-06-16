@@ -59,9 +59,11 @@ public class AlertWorkflowService {
             diagnostics = kubernetesDiagnosticService.collect(context);
         } catch (Exception e) {
             log.error("Kubernetes diagnostic collection failed for alert: {}", context.alertName(), e);
-            diagnostics = new KubernetesDiagnostics(); // 빈 진단 객체로 대체
+            diagnostics = KubernetesDiagnostics.unavailable(
+                "Kubernetes diagnostic collection failed: " + e.getMessage()
+            );
         }
-        
+
         // ✅ AI 서버가 뻗어도 알람은 가야 하므로 try-catch 추가
         String runbook;
         try {
@@ -71,7 +73,7 @@ public class AlertWorkflowService {
             runbook = "⚠️ AI 분석을 일시적으로 가져올 수 없습니다. (에러: " + e.getMessage() + ")\n" +
                     "직접 K8s 로그와 이벤트를 확인해 주세요.";
         }
-        
+
         // ✅ alertName + namespace + workload + container 기반 중복 체크
         boolean shouldNotify = alertThrottleService.canNotify(
             context.alertName(), 
@@ -81,10 +83,11 @@ public class AlertWorkflowService {
         );
         
         log.debug("Alert {}:{}:{}:{} shouldNotify: {}", 
-            context.alertName(), context.namespace(), context.workload(), context.container(), shouldNotify);
-        
+            context.alertName(), context.namespace(), context.workload(), 
+            context.container(), shouldNotify);
+
         boolean slackSent = false;
-        
+
         if (shouldNotify) {
             try {
                 slackSent = slackNotifier.send(context, runbook);
@@ -106,16 +109,17 @@ public class AlertWorkflowService {
             }
         } else {
             log.info("Alert {}:{}:{}:{} throttled - less than 10 minutes since last notification", 
-                context.alertName(), context.namespace(), context.workload(), context.container());
+                context.alertName(), context.namespace(), context.workload(), 
+                context.container());
         }
-        
+
         // ✅ 히스토리 저장 (실패해도 무시)
         try {
             alertHistoryService.save(context, diagnostics, runbook, slackSent);
         } catch (Exception e) {
             log.error("Failed to save alert history for alert: {}", context.alertName(), e);
         }
-        
+
         return new AlertAnalysisResponse.AlertResult(
                 fingerprint,
                 context.alertName(),
