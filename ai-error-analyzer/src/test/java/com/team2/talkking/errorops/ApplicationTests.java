@@ -4,25 +4,27 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest(properties = {
-    // 1. DB 접속 테스트를 시도하다가 터지는 것을 막기 위해 임시 메모리 H2로 유도 (H2 드라이버가 빌드 환경에 있어야 함)
+    // 1. DB 주소 설정 
     "spring.datasource.url=jdbc:h2:mem:testdb;MODE=PostgreSQL",
     "spring.datasource.driver-class-name=org.h2.Driver",
     "spring.datasource.username=sa",
-    "spring.datasource.password=",
+    "spring.datasource.password=", // 👈 따옴표 마감과 쉼표 구분을 확실하게 해줍니다.
+    
+    // 2. JPA 설정 (뭉개졌던 부분 분리)
     "spring.jpa.hibernate.ddl-auto=create-drop",
 
-    // 2. Redis 및 기타 인프라 모듈 에러 방어용 Mock 변수 난사
-    "spring.data.redis.host=localhost",
-    "spring.data.redis.port=6379",
-    "errorops.gemini.api-key=mock-key",
-    "errorops.slack.critical-webhook-url=http://localhost",
-    "errorops.slack.warning-webhook-url=http://localhost",
-    "errorops.slack.info-webhook-url=http://localhost"
+    // 3. Redis 및 기타 인프라 모듈 Mocking (우리가 application.yml에 정의한 대문자 변수명과 매핑)
+    "REDIS_HOST=localhost",
+    "REDIS_PORT=6379",
+    "REDIS_PASSWORD=",
+    "ALERT_DATASOURCE_URL=jdbc:h2:mem:testdb;MODE=PostgreSQL",
+    "ALERT_DATASOURCE_USERNAME=sa",
+    "ALERT_DB_PASSWORD="
 })
 class ApplicationTests {
 
     @Test
     void contextLoads() {
-        // 모든 인프라 변수의 Mocking이 완벽하면 그제야 정상 패스됩니다.
+        // 프로퍼티 구분이 명확해지면 하이버네이트가 H2 인메모리를 정상적으로 물고 부팅에 성공합니다!
     }
 }
