@@ -16,10 +16,10 @@ spring:
 
   # 🚀 다른 메인 DB를 안 쓴다면, 여기가 바로 신규 Postgres DB 자리가 됩니다!
   datasource:
-    url: ${ALERT_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mockdb}
-    username: ${ALERT_DATASOURCE_USERNAME}
-    password: ${ALERT_DB_PASSWORD}
-    driver-class-name: org.postgresql.Driver # Postgres 드라이버로 변경
+    url: ${ALERT_DATASOURCE_URL}           # 👈 실환경 변수만 깔끔하게 명시 (테라폼 rds 엔드포인트가 박힘)
+    username: ${ALERT_DATASOURCE_USERNAME:postgres} # 👈 테라폼의 alert_history_db_master_username과 일치시킴!
+    password: ${ALERT_DB_PASSWORD}         # 👈 ESO가 secrets manager에서 가져와 주입해줄 비밀번호
+    driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
