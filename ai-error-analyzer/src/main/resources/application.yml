@@ -14,7 +14,19 @@ spring:
           min-idle: 5
           max-wait: -1ms
   datasource:
-    url: ${DB_URL}
+    url: ${ALERT_DATASOURCE_URL}           # 👈 실환경 변수만 깔끔하게 명시 (테라폼 rds 엔드포인트가 박힘)
+    username: ${ALERT_DATASOURCE_USERNAME:postgres} # 👈 테라폼의 alert_history_db_master_username과 일치시킴!
+    password: ${ALERT_DB_PASSWORD}         # 👈 ESO가 secrets manager에서 가져와 주입해줄 비밀번호
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    # PostgreSQL 환경에 맞게 하이버네이트 방언 추가 (권장)
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 
 server:
   port: 8082
@@ -24,26 +36,25 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+
   endpoint:
     health:
       probes:
         enabled: true
 
-
-
 errorops:
   kubernetes:
     log-tail-lines: 120
+
   gemini:
     model: ${GEMINI_MODEL:gemini-flash-latest}
     api-key: ${GEMINI_API_KEY:}
+
   slack:
     general-webhook-url: ${SLACK_GENERAL_WEBHOOK_URL:}
     critical-webhook-url: ${SLACK_CRITICAL_WEBHOOK_URL:}
     warning-webhook-url: ${SLACK_WARNING_WEBHOOK_URL:}
     info-webhook-url: ${SLACK_INFO_WEBHOOK_URL:}
-
-
 
 logging:
   level:
