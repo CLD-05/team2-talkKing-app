@@ -16,7 +16,7 @@ spring:
 
   # 🚀 다른 메인 DB를 안 쓴다면, 여기가 바로 신규 Postgres DB 자리가 됩니다!
   datasource:
-    url: ${ALERT_DATASOURCE_URL}
+    url: ${ALERT_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mockdb}
     username: ${ALERT_DATASOURCE_USERNAME}
     password: ${ALERT_DB_PASSWORD}
     driver-class-name: org.postgresql.Driver # Postgres 드라이버로 변경
