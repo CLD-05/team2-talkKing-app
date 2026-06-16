@@ -67,7 +67,8 @@ public class GeminiRunbookClient {
 
                 Kubernetes diagnostics:
                 - pod phase: %s
-                - events: %s
+                - recent events:
+                %s
                 - logs:
                 %s
 
@@ -85,7 +86,7 @@ public class GeminiRunbookClient {
                 context.summary(),
                 context.description(),
                 diagnostics.podPhase(),
-                diagnostics.recentEvents(),
+                formatEvents(diagnostics.recentEvents()),
                 truncate(diagnostics.recentLogs(), 6000)
         );
     }
@@ -94,6 +95,8 @@ public class GeminiRunbookClient {
         return """
                 Likely cause: Alert %s is firing. Check the pod status, recent events, and recent container logs first.
                 Impact: namespace=%s, pod=%s, severity=%s
+                Recent Kubernetes events:
+                %s
                 Commands to check now:
                 - kubectl describe pod %s -n %s
                 - kubectl logs %s -n %s --tail=120
@@ -104,6 +107,7 @@ public class GeminiRunbookClient {
                 context.namespace(),
                 context.pod(),
                 context.severity(),
+                formatEvents(diagnostics.recentEvents()),
                 context.pod(),
                 context.namespace(),
                 context.pod(),
@@ -117,5 +121,15 @@ public class GeminiRunbookClient {
             return value == null ? "" : value;
         }
         return value.substring(value.length() - maxLength);
+    }
+
+    private String formatEvents(List<String> events) {
+        if (events == null || events.isEmpty()) {
+            return "- No recent pod events found.";
+        }
+        return events.stream()
+                .map(event -> "- " + event)
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("- No recent pod events found.");
     }
 }

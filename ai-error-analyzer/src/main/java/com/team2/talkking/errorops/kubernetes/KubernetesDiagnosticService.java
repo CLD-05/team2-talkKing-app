@@ -7,6 +7,8 @@ import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.CoreV1EventList;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.util.Config;
+import java.time.OffsetDateTime;
+import java.util.Comparator;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -15,9 +17,14 @@ import org.springframework.stereotype.Service;
 public class KubernetesDiagnosticService {
 
     private final int logTailLines;
+    private final int eventLimit;
 
-    public KubernetesDiagnosticService(@Value("${errorops.kubernetes.log-tail-lines:120}") int logTailLines) {
+    public KubernetesDiagnosticService(
+            @Value("${errorops.kubernetes.log-tail-lines:120}") int logTailLines,
+            @Value("${errorops.kubernetes.event-limit:20}") int eventLimit
+    ) {
         this.logTailLines = logTailLines;
+        this.eventLimit = eventLimit;
     }
 
     public KubernetesDiagnostics collect(AlertContext context) {
@@ -58,7 +65,7 @@ public class KubernetesDiagnosticService {
     }
 
     private List<String> readEvents(CoreV1Api api, AlertContext context) throws Exception {
-        String fieldSelector = "involvedObject.name=" + context.pod();
+        String fieldSelector = "involvedObject.kind=Pod,involvedObject.name=" + context.pod();
         CoreV1EventList eventList = api.listNamespacedEvent(context.namespace())
                 .fieldSelector(fieldSelector)
                 .execute();
@@ -68,10 +75,34 @@ public class KubernetesDiagnosticService {
         }
 
         return eventList.getItems().stream()
-                .map(event -> "%s %s".formatted(
+                .sorted(Comparator.comparing(
+                        event -> eventTime(event),
+                        Comparator.nullsLast(Comparator.reverseOrder())
+                ))
+                .limit(eventLimit)
+                .map(event -> "%s %s %s count=%s lastSeen=%s - %s".formatted(
+                        event.getType() == null ? "UnknownType" : event.getType(),
                         event.getReason() == null ? "UnknownReason" : event.getReason(),
+                        event.getInvolvedObject() == null || event.getInvolvedObject().getName() == null
+                                ? context.pod()
+                                : event.getInvolvedObject().getName(),
+                        event.getCount() == null ? 1 : event.getCount(),
+                        eventTime(event) == null ? "unknown" : eventTime(event),
                         event.getMessage() == null ? "" : event.getMessage()
                 ))
                 .toList();
+    }
+
+    private OffsetDateTime eventTime(io.kubernetes.client.openapi.models.CoreV1Event event) {
+        if (event.getLastTimestamp() != null) {
+            return event.getLastTimestamp();
+        }
+        if (event.getEventTime() != null) {
+            return event.getEventTime();
+        }
+        if (event.getFirstTimestamp() != null) {
+            return event.getFirstTimestamp();
+        }
+        return event.getMetadata() == null ? null : event.getMetadata().getCreationTimestamp();
     }
 }

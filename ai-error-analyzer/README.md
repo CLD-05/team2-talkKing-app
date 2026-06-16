@@ -24,6 +24,7 @@ Optional application properties:
 
 ```properties
 errorops.kubernetes.log-tail-lines=120
+errorops.kubernetes.event-limit=20
 errorops.gemini.model=gemini-1.5-flash
 ```
 
