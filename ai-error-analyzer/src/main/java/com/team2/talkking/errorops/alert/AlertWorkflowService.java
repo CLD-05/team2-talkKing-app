@@ -1,6 +1,7 @@
 package com.team2.talkking.errorops.alert;
 
 import com.team2.talkking.errorops.gemini.GeminiRunbookClient;
+import com.team2.talkking.errorops.history.AlertHistoryService;
 import com.team2.talkking.errorops.kubernetes.KubernetesDiagnosticService;
 import com.team2.talkking.errorops.kubernetes.KubernetesDiagnostics;
 import com.team2.talkking.errorops.slack.SlackNotifier;
@@ -17,19 +18,22 @@ public class AlertWorkflowService {
     private final GeminiRunbookClient geminiRunbookClient;
     private final SlackNotifier slackNotifier;
     private final AlertThrottleServiceRedis alertThrottleService;
+    private final AlertHistoryService alertHistoryService;
 
     public AlertWorkflowService(
             AlertContextFactory alertContextFactory,
             KubernetesDiagnosticService kubernetesDiagnosticService,
             GeminiRunbookClient geminiRunbookClient,
             SlackNotifier slackNotifier,
-            AlertThrottleServiceRedis alertThrottleService
+            AlertThrottleServiceRedis alertThrottleService,
+            AlertHistoryService alertHistoryService
     ) {
         this.alertContextFactory = alertContextFactory;
         this.kubernetesDiagnosticService = kubernetesDiagnosticService;
         this.geminiRunbookClient = geminiRunbookClient;
         this.slackNotifier = slackNotifier;
         this.alertThrottleService = alertThrottleService;
+        this.alertHistoryService = alertHistoryService;
     }
 
     public AlertAnalysisResponse handle(AlertmanagerWebhookRequest request) {
@@ -87,7 +91,16 @@ public class AlertWorkflowService {
             log.info("Alert {}:{}:{}:{} throttled - less than 10 minutes since last notification", 
                 context.alertName(), context.namespace(), context.workload(), context.container());
         }
-        
+        try {
+            alertHistoryService.save(
+                    context,
+                    diagnostics,
+                    runbook,
+                    slackSent
+            );
+        } catch (Exception e) {
+            log.error("Failed to save alert history", e);
+        }
         return new AlertAnalysisResponse.AlertResult(
                 fingerprint,
                 context.alertName(),

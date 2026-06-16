@@ -1,6 +1,7 @@
 spring:
   application:
     name: ai-error-analyzer
+
   redis:
     host: ${REDIS_HOST:team2-talkking-dev-redis.9iaedf.ng.0001.apn2.cache.amazonaws.com}
     port: ${REDIS_PORT:6379}
@@ -12,8 +13,22 @@ spring:
         max-idle: 10
         min-idle: 5
         max-wait: -1ms
+
+  # 🚀 다른 메인 DB를 안 쓴다면, 여기가 바로 신규 Postgres DB 자리가 됩니다!
   datasource:
-    url: ${DB_URL}
+    url: ${ALERT_DATASOURCE_URL}
+    username: ${ALERT_DATASOURCE_USERNAME}
+    password: ${ALERT_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver # Postgres 드라이버로 변경
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    # PostgreSQL 환경에 맞게 하이버네이트 방언 추가 (권장)
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 
 server:
   port: 8082
@@ -23,25 +38,24 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+
   endpoint:
     health:
       probes:
         enabled: true
 
-
-
 errorops:
   kubernetes:
     log-tail-lines: 120
+
   gemini:
     model: ${GEMINI_MODEL:gemini-flash-latest}
     api-key: ${GEMINI_API_KEY:}
+
   slack:
     critical-webhook-url: ${SLACK_CRITICAL_WEBHOOK_URL:}
     warning-webhook-url: ${SLACK_WARNING_WEBHOOK_URL:}
     info-webhook-url: ${SLACK_INFO_WEBHOOK_URL:}
-
-
 
 logging:
   level:
