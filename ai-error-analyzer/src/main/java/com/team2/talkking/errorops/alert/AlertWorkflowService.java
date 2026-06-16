@@ -53,32 +53,52 @@ public class AlertWorkflowService {
         log.info("Analyzing alert - fingerprint: {}, alertname: {}, workload: {}, pod: {}", 
                 fingerprint, context.alertName(), context.workload(), context.pod());
         
-        KubernetesDiagnostics diagnostics = kubernetesDiagnosticService.collect(context);
-        String runbook = geminiRunbookClient.generateRunbook(context, diagnostics);
-        
-        // ✅ 수정: alertName + namespace + workload + container 기반 중복 체크
+        // ✅ Kubernetes 진단 (실패해도 fallback)
+        KubernetesDiagnostics diagnostics;
+        try {
+            diagnostics = kubernetesDiagnosticService.collect(context);
+        } catch (Exception e) {
+            log.error("Kubernetes diagnostic collection failed for alert: {}", context.alertName(), e);
+            diagnostics = KubernetesDiagnostics.unavailable(
+                "Kubernetes diagnostic collection failed: " + e.getMessage()
+            );
+        }
+
+        // ✅ AI 서버가 뻗어도 알람은 가야 하므로 try-catch 추가
+        String runbook;
+        try {
+            runbook = geminiRunbookClient.generateRunbook(context, diagnostics);
+        } catch (Exception e) {
+            log.error("Gemini AI Runbook generation failed for alert: {}", context.alertName(), e);
+            runbook = "⚠️ AI 분석을 일시적으로 가져올 수 없습니다. (에러: " + e.getMessage() + ")\n" +
+                    "직접 K8s 로그와 이벤트를 확인해 주세요.";
+        }
+
+        // ✅ alertName + namespace + workload + container 기반 중복 체크
         boolean shouldNotify = alertThrottleService.canNotify(
             context.alertName(), 
             context.namespace(), 
-            context.workload(),     // ← 추가!
-            context.container()     // ← 추가!
+            context.workload(),
+            context.container()
         );
+        
         log.debug("Alert {}:{}:{}:{} shouldNotify: {}", 
-            context.alertName(), context.namespace(), context.workload(), context.container(), shouldNotify);
-        
+            context.alertName(), context.namespace(), context.workload(), 
+            context.container(), shouldNotify);
+
         boolean slackSent = false;
-        
+
         if (shouldNotify) {
             try {
                 slackSent = slackNotifier.send(context, runbook);
                 
                 if (slackSent) {
-                    // ✅ 수정: workload + container 기반으로 기록
+                    // ✅ 같은 키로 Redis에 기록
                     alertThrottleService.recordNotification(
                         context.alertName(), 
                         context.namespace(), 
-                        context.workload(),     // ← 추가!
-                        context.container()     // ← 추가!
+                        context.workload(),
+                        context.container()
                     );
                     log.info("Slack notification sent for alert: {}", fingerprint);
                 } else {
@@ -89,18 +109,17 @@ public class AlertWorkflowService {
             }
         } else {
             log.info("Alert {}:{}:{}:{} throttled - less than 10 minutes since last notification", 
-                context.alertName(), context.namespace(), context.workload(), context.container());
+                context.alertName(), context.namespace(), context.workload(), 
+                context.container());
         }
+
+        // ✅ 히스토리 저장 (실패해도 무시)
         try {
-            alertHistoryService.save(
-                    context,
-                    diagnostics,
-                    runbook,
-                    slackSent
-            );
+            alertHistoryService.save(context, diagnostics, runbook, slackSent);
         } catch (Exception e) {
-            log.error("Failed to save alert history", e);
+            log.error("Failed to save alert history for alert: {}", context.alertName(), e);
         }
+
         return new AlertAnalysisResponse.AlertResult(
                 fingerprint,
                 context.alertName(),
