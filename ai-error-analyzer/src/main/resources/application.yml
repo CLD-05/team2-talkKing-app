@@ -1,17 +1,18 @@
 spring:
   application:
     name: ai-error-analyzer
-  redis:
-    host: ${REDIS_HOST:team2-talkking-dev-redis.9iaedf.ng.0001.apn2.cache.amazonaws.com}
-    port: ${REDIS_PORT:6379}
-    password: ${REDIS_PASSWORD:}
-    timeout: 2000ms
-    jedis:
-      pool:
-        max-active: 20
-        max-idle: 10
-        min-idle: 5
-        max-wait: -1ms
+  data:  
+    redis:
+      host: ${REDIS_HOST:team2-talkking-dev-redis.9iaedf.ng.0001.apn2.cache.amazonaws.com}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      jedis:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 5
+          max-wait: -1ms
   datasource:
     url: ${DB_URL}
 
