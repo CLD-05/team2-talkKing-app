@@ -1,20 +1,18 @@
 spring:
   application:
     name: ai-error-analyzer
-
-  redis:
-    host: ${REDIS_HOST:team2-talkking-dev-redis.9iaedf.ng.0001.apn2.cache.amazonaws.com}
-    port: ${REDIS_PORT:6379}
-    password: ${REDIS_PASSWORD:}
-    timeout: 2000ms
-    jedis:
-      pool:
-        max-active: 20
-        max-idle: 10
-        min-idle: 5
-        max-wait: -1ms
-
-  # 🚀 다른 메인 DB를 안 쓴다면, 여기가 바로 신규 Postgres DB 자리가 됩니다!
+  data:  
+    redis:
+      host: ${REDIS_HOST:team2-talkking-dev-redis.9iaedf.ng.0001.apn2.cache.amazonaws.com}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      jedis:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 5
+          max-wait: -1ms
   datasource:
     url: ${ALERT_DATASOURCE_URL}           # 👈 실환경 변수만 깔끔하게 명시 (테라폼 rds 엔드포인트가 박힘)
     username: ${ALERT_DATASOURCE_USERNAME:postgres} # 👈 테라폼의 alert_history_db_master_username과 일치시킴!
