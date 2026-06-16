@@ -11,17 +11,20 @@ import org.springframework.web.reactive.function.client.WebClient;
 public class SlackNotifier {
 
     private final WebClient webClient;
+    private final String generalWebhookUrl;
     private final String criticalWebhookUrl;
     private final String warningWebhookUrl;
     private final String infoWebhookUrl;
 
     public SlackNotifier(
             WebClient.Builder webClientBuilder,
+            @Value("${errorops.slack.general-webhook-url:}") String generalWebhookUrl,
             @Value("${errorops.slack.critical-webhook-url:}") String criticalWebhookUrl,
             @Value("${errorops.slack.warning-webhook-url:}") String warningWebhookUrl,
             @Value("${errorops.slack.info-webhook-url:}") String infoWebhookUrl
     ) {
         this.webClient = webClientBuilder.build();
+        this.generalWebhookUrl = generalWebhookUrl;
         this.criticalWebhookUrl = criticalWebhookUrl;
         this.warningWebhookUrl = warningWebhookUrl;
         this.infoWebhookUrl = infoWebhookUrl;
@@ -65,10 +68,10 @@ public class SlackNotifier {
         String severity = context.severity() == null ? "" : context.severity().toLowerCase();
 
         return switch (severity) {
-            case "warning" -> firstNonBlank(warningWebhookUrl, criticalWebhookUrl);
-            case "info" -> firstNonBlank(infoWebhookUrl, criticalWebhookUrl);
-            case "critical" -> criticalWebhookUrl;
-            default -> criticalWebhookUrl;
+            case "critical" -> firstNonBlank(criticalWebhookUrl, generalWebhookUrl);
+            case "warning" -> firstNonBlank(warningWebhookUrl, generalWebhookUrl);
+            case "info" -> firstNonBlank(infoWebhookUrl, generalWebhookUrl);
+            default -> generalWebhookUrl;
         };
     }
 

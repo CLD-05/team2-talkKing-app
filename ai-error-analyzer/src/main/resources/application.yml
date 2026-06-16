@@ -37,6 +37,7 @@ errorops:
     model: ${GEMINI_MODEL:gemini-flash-latest}
     api-key: ${GEMINI_API_KEY:}
   slack:
+    general-webhook-url: ${SLACK_GENERAL_WEBHOOK_URL:}
     critical-webhook-url: ${SLACK_CRITICAL_WEBHOOK_URL:}
     warning-webhook-url: ${SLACK_WARNING_WEBHOOK_URL:}
     info-webhook-url: ${SLACK_INFO_WEBHOOK_URL:}
