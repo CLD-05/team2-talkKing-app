@@ -1,6 +1,7 @@
 package com.team2.talkking.errorops.kubernetes;
 
 import com.team2.talkking.errorops.alert.AlertContext;
+import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
@@ -34,12 +35,12 @@ public class KubernetesDiagnosticService {
 
         try {
             CoreV1Api api = coreV1Api();
-            V1Pod pod = api.readNamespacedPod(context.pod(), context.namespace()).execute();
-            String phase = pod.getStatus() == null ? "" : String.valueOf(pod.getStatus().getPhase());
-            String logs = readLogs(api, context);
-            List<String> events = readEvents(api, context);
+            StringBuilder errors = new StringBuilder();
+            String phase = readPodPhase(api, context, errors);
+            String logs = readLogs(api, context, errors);
+            List<String> events = readEvents(api, context, errors);
 
-            return new KubernetesDiagnostics(phase, events, logs, "");
+            return new KubernetesDiagnostics(phase, events, logs, errors.toString());
         } catch (Exception exception) {
             return KubernetesDiagnostics.unavailable(exception.getMessage());
         }
@@ -51,7 +52,17 @@ public class KubernetesDiagnosticService {
         return new CoreV1Api(client);
     }
 
-    private String readLogs(CoreV1Api api, AlertContext context) throws Exception {
+    private String readPodPhase(CoreV1Api api, AlertContext context, StringBuilder errors) {
+        try {
+            V1Pod pod = api.readNamespacedPod(context.pod(), context.namespace()).execute();
+            return pod.getStatus() == null ? "" : String.valueOf(pod.getStatus().getPhase());
+        } catch (Exception exception) {
+            appendError(errors, "Pod status lookup failed", exception);
+            return "";
+        }
+    }
+
+    private String readLogs(CoreV1Api api, AlertContext context, StringBuilder errors) {
         CoreV1Api.APIreadNamespacedPodLogRequest request =
                 api.readNamespacedPodLog(context.pod(), context.namespace())
                         .tailLines(logTailLines)
@@ -61,14 +72,41 @@ public class KubernetesDiagnosticService {
             request.container(context.container());
         }
 
-        return request.execute();
+        try {
+            return request.execute();
+        } catch (ApiException exception) {
+            if (context.container() != null && !context.container().isBlank() && exception.getCode() == 400) {
+                appendError(errors, "Container-specific log lookup failed; retried without container", exception);
+                try {
+                    return api.readNamespacedPodLog(context.pod(), context.namespace())
+                            .tailLines(logTailLines)
+                            .timestamps(true)
+                            .execute();
+                } catch (Exception retryException) {
+                    appendError(errors, "Pod log lookup retry failed", retryException);
+                    return "";
+                }
+            }
+            appendError(errors, "Pod log lookup failed", exception);
+            return "";
+        } catch (Exception exception) {
+            appendError(errors, "Pod log lookup failed", exception);
+            return "";
+        }
     }
 
-    private List<String> readEvents(CoreV1Api api, AlertContext context) throws Exception {
+    private List<String> readEvents(CoreV1Api api, AlertContext context, StringBuilder errors) {
         String fieldSelector = "involvedObject.kind=Pod,involvedObject.name=" + context.pod();
-        CoreV1EventList eventList = api.listNamespacedEvent(context.namespace())
-                .fieldSelector(fieldSelector)
-                .execute();
+        CoreV1EventList eventList;
+
+        try {
+            eventList = api.listNamespacedEvent(context.namespace())
+                    .fieldSelector(fieldSelector)
+                    .execute();
+        } catch (Exception exception) {
+            appendError(errors, "Pod event lookup failed", exception);
+            return List.of();
+        }
 
         if (eventList.getItems() == null) {
             return List.of();
@@ -104,5 +142,20 @@ public class KubernetesDiagnosticService {
             return event.getFirstTimestamp();
         }
         return event.getMetadata() == null ? null : event.getMetadata().getCreationTimestamp();
+    }
+
+    private void appendError(StringBuilder errors, String title, Exception exception) {
+        if (!errors.isEmpty()) {
+            errors.append("\n");
+        }
+        errors.append(title).append(": ");
+        if (exception instanceof ApiException apiException) {
+            errors.append("HTTP ").append(apiException.getCode()).append(" ");
+            if (apiException.getResponseBody() != null && !apiException.getResponseBody().isBlank()) {
+                errors.append(apiException.getResponseBody());
+                return;
+            }
+        }
+        errors.append(exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage());
     }
 }
