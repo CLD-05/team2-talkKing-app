@@ -68,7 +68,6 @@ public class AiAnalyzerMetrics {
         Timer.builder("ai_analyzer_request_duration_seconds")
             .description("AI Analyzer 응답시간 (초)")
             .publishPercentiles(0.5, 0.95, 0.99)
-            .baseUnit("seconds")
             .register(meterRegistry);
 
         log.info("🎯 메트릭 초기화 완료");
