@@ -6,6 +6,7 @@ import com.team2.talkking.errorops.kubernetes.KubernetesDiagnosticService;
 import com.team2.talkking.errorops.kubernetes.KubernetesDiagnostics;
 import com.team2.talkking.errorops.slack.SlackNotifier;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 import lombok.extern.slf4j.Slf4j;
 import com.team2.talkking.errorops.metrics.AiAnalyzerMetrics;
@@ -45,10 +46,51 @@ public class AlertWorkflowService {
         List<AlertmanagerWebhookRequest.Alert> alerts = request.alerts() == null ? List.of() : request.alerts();
         List<AlertAnalysisResponse.AlertResult> results = alerts.stream()
                 .filter(alert -> !"resolved".equalsIgnoreCase(alert.status()))
+                .filter(this::isActionableCodexAlert)
                 .map(this::analyze)
                 .toList();
 
         return new AlertAnalysisResponse(alerts.size(), results.size(), results);
+    }
+
+    private boolean isActionableCodexAlert(AlertmanagerWebhookRequest.Alert alert) {
+        Map<String, String> labels = alert.labels() == null ? Map.of() : alert.labels();
+        String alertName = labels.getOrDefault("alertname", "");
+        String severity = labels.getOrDefault("severity", "");
+        String namespace = labels.getOrDefault("namespace", "");
+        String pod = firstPresent(labels, "pod", "pod_name", "kubernetes_pod_name");
+
+        if ("Watchdog".equalsIgnoreCase(alertName) || "InfoInhibitor".equalsIgnoreCase(alertName)) {
+            log.info("Skipping non-actionable platform alert: {}", alertName);
+            return false;
+        }
+
+        if (!"warning".equalsIgnoreCase(severity) && !"critical".equalsIgnoreCase(severity)) {
+            log.info("Skipping alert with non-actionable severity - alertname: {}, severity: {}", alertName, severity);
+            return false;
+        }
+
+        if (!namespace.startsWith("talkking-")) {
+            log.info("Skipping alert outside TalkKing namespaces - alertname: {}, namespace: {}", alertName, namespace);
+            return false;
+        }
+
+        if (pod.isBlank()) {
+            log.info("Skipping alert without pod label - alertname: {}, namespace: {}", alertName, namespace);
+            return false;
+        }
+
+        return true;
+    }
+
+    private String firstPresent(Map<String, String> values, String... keys) {
+        for (String key : keys) {
+            String value = values.get(key);
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
     }
 
     private AlertAnalysisResponse.AlertResult analyze(AlertmanagerWebhookRequest.Alert alert) {
