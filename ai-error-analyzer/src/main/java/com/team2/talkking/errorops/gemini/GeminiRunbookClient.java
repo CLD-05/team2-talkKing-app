@@ -15,15 +15,18 @@ public class GeminiRunbookClient {
     private final WebClient webClient;
     private final String apiKey;
     private final String model;
+    private final Duration timeout;
 
     public GeminiRunbookClient(
             WebClient.Builder webClientBuilder,
             @Value("${errorops.gemini.api-key:}") String apiKey,
-            @Value("${errorops.gemini.model:gemini-flash-latest}") String model
+            @Value("${errorops.gemini.model:gemini-flash-latest}") String model,
+            @Value("${errorops.gemini.timeout-seconds:300}") long timeoutSeconds
     ) {
         this.webClient = webClientBuilder.baseUrl("https://generativelanguage.googleapis.com").build();
         this.apiKey = apiKey;
         this.model = model;
+        this.timeout = Duration.ofSeconds(timeoutSeconds);
     }
 
     public String generateRunbook(AlertContext context, KubernetesDiagnostics diagnostics) {
@@ -42,7 +45,7 @@ public class GeminiRunbookClient {
                     ))
                     .retrieve()
                     .bodyToMono(GeminiResponse.class)
-                    .timeout(Duration.ofSeconds(20))
+                    .timeout(timeout)
                     .block();
 
             String text = response == null ? "" : response.firstText();

@@ -26,7 +26,8 @@ Optional application properties:
 ```properties
 errorops.kubernetes.log-tail-lines=120
 errorops.kubernetes.event-limit=20
-errorops.gemini.model=gemini-1.5-flash
+errorops.gemini.model=gemini-flash-latest
+errorops.gemini.timeout-seconds=300
 ```
 
 If `GEMINI_API_KEY` is empty, the app returns a fallback `[CODEX_TASK]` prompt.
