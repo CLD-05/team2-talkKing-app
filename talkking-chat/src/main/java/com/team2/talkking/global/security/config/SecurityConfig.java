@@ -65,7 +65,7 @@ public class SecurityConfig {
                 
                 // 💡 현재는 필터가 구현 중이므로 전면 허용 상태를 보존하되, 
                 // anyRequest().permitAll() 상태여도 시큐리티 코어 자체가 꼬이면 차단됩니다.
-                .anyRequest().permitAll() 
+                .anyRequest().authenticated() 
             );
             
         return http.build();
