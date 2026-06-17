@@ -15,19 +15,22 @@ public class SlackNotifier {
     private final String criticalWebhookUrl;
     private final String warningWebhookUrl;
     private final String infoWebhookUrl;
+    private final String codexQueueWebhookUrl;
 
     public SlackNotifier(
             WebClient.Builder webClientBuilder,
             @Value("${errorops.slack.general-webhook-url:}") String generalWebhookUrl,
             @Value("${errorops.slack.critical-webhook-url:}") String criticalWebhookUrl,
             @Value("${errorops.slack.warning-webhook-url:}") String warningWebhookUrl,
-            @Value("${errorops.slack.info-webhook-url:}") String infoWebhookUrl
+            @Value("${errorops.slack.info-webhook-url:}") String infoWebhookUrl,
+            @Value("${errorops.slack.codex-queue-webhook-url:}") String codexQueueWebhookUrl
     ) {
         this.webClient = webClientBuilder.build();
         this.generalWebhookUrl = generalWebhookUrl;
         this.criticalWebhookUrl = criticalWebhookUrl;
         this.warningWebhookUrl = warningWebhookUrl;
         this.infoWebhookUrl = infoWebhookUrl;
+        this.codexQueueWebhookUrl = codexQueueWebhookUrl;
     }
 
     public boolean send(AlertContext context, String runbook) {
@@ -36,19 +39,21 @@ public class SlackNotifier {
             return false;
         }
 
-        String message = """
-                *[%s] %s*
-                namespace: `%s`
-                pod: `%s`
+        String message = isCodexQueueSelected(selectedWebhookUrl)
+                ? runbook
+                : """
+                        *[%s] %s*
+                        namespace: `%s`
+                        pod: `%s`
 
-                %s
-                """.formatted(
-                context.severity(),
-                context.alertName(),
-                context.namespace(),
-                context.pod(),
-                runbook
-        );
+                        %s
+                        """.formatted(
+                        context.severity(),
+                        context.alertName(),
+                        context.namespace(),
+                        context.pod(),
+                        runbook
+                );
 
         try {
             webClient.post()
@@ -65,6 +70,10 @@ public class SlackNotifier {
     }
 
     private String selectWebhookUrl(AlertContext context) {
+        if (codexQueueWebhookUrl != null && !codexQueueWebhookUrl.isBlank()) {
+            return codexQueueWebhookUrl;
+        }
+
         String severity = context.severity() == null ? "" : context.severity().toLowerCase();
 
         return switch (severity) {
@@ -82,5 +91,11 @@ public class SlackNotifier {
             }
         }
         return "";
+    }
+
+    private boolean isCodexQueueSelected(String selectedWebhookUrl) {
+        return codexQueueWebhookUrl != null
+                && !codexQueueWebhookUrl.isBlank()
+                && codexQueueWebhookUrl.equals(selectedWebhookUrl);
     }
 }

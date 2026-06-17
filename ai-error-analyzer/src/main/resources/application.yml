@@ -56,6 +56,7 @@ errorops:
     critical-webhook-url: ${SLACK_CRITICAL_WEBHOOK_URL:}
     warning-webhook-url: ${SLACK_WARNING_WEBHOOK_URL:}
     info-webhook-url: ${SLACK_INFO_WEBHOOK_URL:}
+    codex-queue-webhook-url: ${SLACK_CODEX_QUEUE_WEBHOOK_URL:}
 
 logging:
   level:
