@@ -8,6 +8,7 @@ import com.team2.talkking.errorops.slack.SlackNotifier;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import lombok.extern.slf4j.Slf4j;
+import com.team2.talkking.errorops.metrics.AiAnalyzerMetrics;
 
 @Slf4j
 @Service
@@ -19,6 +20,7 @@ public class AlertWorkflowService {
     private final SlackNotifier slackNotifier;
     private final AlertThrottleServiceRedis alertThrottleService;
     private final AlertHistoryService alertHistoryService;
+    private final AiAnalyzerMetrics metrics;
 
     public AlertWorkflowService(
             AlertContextFactory alertContextFactory,
@@ -26,7 +28,8 @@ public class AlertWorkflowService {
             GeminiRunbookClient geminiRunbookClient,
             SlackNotifier slackNotifier,
             AlertThrottleServiceRedis alertThrottleService,
-            AlertHistoryService alertHistoryService
+            AlertHistoryService alertHistoryService,
+            AiAnalyzerMetrics metrics
     ) {
         this.alertContextFactory = alertContextFactory;
         this.kubernetesDiagnosticService = kubernetesDiagnosticService;
@@ -34,9 +37,11 @@ public class AlertWorkflowService {
         this.slackNotifier = slackNotifier;
         this.alertThrottleService = alertThrottleService;
         this.alertHistoryService = alertHistoryService;
+        this.metrics = metrics;
     }
 
     public AlertAnalysisResponse handle(AlertmanagerWebhookRequest request) {
+        metrics.recordCall();
         List<AlertmanagerWebhookRequest.Alert> alerts = request.alerts() == null ? List.of() : request.alerts();
         List<AlertAnalysisResponse.AlertResult> results = alerts.stream()
                 .filter(alert -> !"resolved".equalsIgnoreCase(alert.status()))
@@ -47,6 +52,7 @@ public class AlertWorkflowService {
     }
 
     private AlertAnalysisResponse.AlertResult analyze(AlertmanagerWebhookRequest.Alert alert) {
+        long startTime = System.currentTimeMillis();
         AlertContext context = alertContextFactory.from(alert);
         String fingerprint = context.fingerprint();
         
@@ -66,15 +72,22 @@ public class AlertWorkflowService {
 
         // ✅ AI 서버가 뻗어도 알람은 가야 하므로 try-catch 추가
         String runbook;
+        boolean aiSuccess = false;
         try {
             runbook = geminiRunbookClient.generateRunbook(context, diagnostics);
+            aiSuccess = true;
         } catch (Exception e) {
             log.error("Gemini AI Runbook generation failed for alert: {}", context.alertName(), e);
             runbook = "⚠️ AI 분석을 일시적으로 가져올 수 없습니다. (에러: " + e.getMessage() + ")\n" +
                     "직접 K8s 로그와 이벤트를 확인해 주세요.";
+            aiSuccess = false;
         }
 
         // ✅ alertName + namespace + workload + container 기반 중복 체크
+        String alertType = AiAnalyzerMetrics.normalizeAlertType(context.alertName(), context.severity());
+        String severity = AiAnalyzerMetrics.normalizeSeverity(context.severity());
+        metrics.recordAlert(alertType, severity);
+
         boolean shouldNotify = alertThrottleService.canNotify(
             context.alertName(), 
             context.namespace(), 
@@ -119,6 +132,11 @@ public class AlertWorkflowService {
         } catch (Exception e) {
             log.error("Failed to save alert history for alert: {}", context.alertName(), e);
         }
+
+         // 응답시간 + 성공/실패 기록
+        long duration = System.currentTimeMillis() - startTime;
+        metrics.recordResponseTime(duration);
+        metrics.recordResult(aiSuccess);
 
         return new AlertAnalysisResponse.AlertResult(
                 fingerprint,
