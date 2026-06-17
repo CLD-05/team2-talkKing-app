@@ -50,6 +50,7 @@ errorops:
   gemini:
     model: ${GEMINI_MODEL:gemini-flash-latest}
     api-key: ${GEMINI_API_KEY:}
+    timeout-seconds: ${GEMINI_TIMEOUT_SECONDS:300}
 
   slack:
     general-webhook-url: ${SLACK_GENERAL_WEBHOOK_URL:}
