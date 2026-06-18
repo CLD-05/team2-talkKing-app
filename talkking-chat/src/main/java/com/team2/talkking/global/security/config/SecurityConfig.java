@@ -60,7 +60,9 @@ public class SecurityConfig {
                     "/api/chat/**",        // 채팅 API 레이어 허용 유지
                     "/css/**", "/js/**", "/images/**", "/favicon.ico",
                     "/ws", "/ws/**",
-                    "/ws-notif", "/ws-notif/**"
+                    "/ws-notif", "/ws-notif/**",
+                    "/health",             // ← 추가! 🔴
+                    "/actuator/**"         // ← 추가! 🔴
                 ).permitAll()
                 
                 // 💡 현재는 필터가 구현 중이므로 전면 허용 상태를 보존하되, 
