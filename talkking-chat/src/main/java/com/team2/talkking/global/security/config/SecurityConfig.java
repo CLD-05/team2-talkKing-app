@@ -10,6 +10,10 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import com.team2.talkking.global.security.filter.JwtAuthenticationFilter;  // ← 추가!
+import com.team2.talkking.global.jwt.JwtProvider;                          // ← 추가!
+import lombok.RequiredArgsConstructor;                                      // ← 추가!
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;  // ← 추가!
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -17,7 +21,10 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final JwtProvider jwtProvider;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -69,6 +76,11 @@ public class SecurityConfig {
                 // anyRequest().permitAll() 상태여도 시큐리티 코어 자체가 꼬이면 차단됩니다.
                 .anyRequest().authenticated() 
             );
+
+            http.addFilterBefore(
+            new JwtAuthenticationFilter(jwtProvider),
+            UsernamePasswordAuthenticationFilter.class
+        );
             
         return http.build();
     }
