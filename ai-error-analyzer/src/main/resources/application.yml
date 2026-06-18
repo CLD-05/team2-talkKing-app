@@ -58,6 +58,8 @@ errorops:
     warning-webhook-url: ${SLACK_WARNING_WEBHOOK_URL:}
     info-webhook-url: ${SLACK_INFO_WEBHOOK_URL:}
     codex-queue-webhook-url: ${SLACK_CODEX_QUEUE_WEBHOOK_URL:}
+    codex-bot-token: ${SLACK_CODEX_BOT_TOKEN:}
+    codex-channel-id: ${SLACK_CODEX_CHANNEL_ID:}
 
 logging:
   level:
