@@ -26,13 +26,13 @@ COPY . .
 RUN mvn clean package -pl talkking-chat -am
 
 # ========================================
-# 3단계: 실행 이미지 (경량화 Alpine JRE + 타임존 설정 + 카오스 테스트 도구)
+# 3단계: 실행 이미지 (경량화 Alpine JRE + 타임존 + 모든 FIS 카오스 도구 패키지)
 # ========================================
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
-# 💡 타임존 설정 및 FIS 카오스 테스트를 위한 stress-ng 유틸리티 상시 탑재
-RUN apk add --no-cache tzdata stress-ng \
+# 💡 타임존 세팅 + 메모리 부하(stress-ng) + 네트워크 지연/장애(iproute2) 도구 통합 탑재
+RUN apk add --no-cache tzdata stress-ng iproute2 \
   && cp /usr/share/zoneinfo/Asia/Seoul /etc/localtime \
   && echo "Asia/Seoul" > /etc/timezone
 
