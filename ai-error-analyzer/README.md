@@ -19,6 +19,8 @@ SLACK_CRITICAL_WEBHOOK_URL=
 SLACK_WARNING_WEBHOOK_URL=
 SLACK_INFO_WEBHOOK_URL=
 SLACK_CODEX_QUEUE_WEBHOOK_URL=
+SLACK_CODEX_BOT_TOKEN=
+SLACK_CODEX_CHANNEL_ID=
 ```
 
 Optional application properties:
@@ -31,7 +33,8 @@ errorops.gemini.timeout-seconds=300
 ```
 
 If `GEMINI_API_KEY` is empty, the app returns a fallback `[CODEX_TASK]` prompt.
-If `SLACK_CODEX_QUEUE_WEBHOOK_URL` is set, Codex tasks are sent to that queue channel.
+If `SLACK_CODEX_BOT_TOKEN` and `SLACK_CODEX_CHANNEL_ID` are set, Codex tasks are uploaded as prompt `.txt` files to the queue channel.
+If file upload settings are empty and `SLACK_CODEX_QUEUE_WEBHOOK_URL` is set, Codex tasks are sent to that queue channel as text.
 If the Codex queue webhook is empty, alerts with `critical`, `warning`, and `info` severity use their matching webhook first.
 Other severities are sent to `SLACK_GENERAL_WEBHOOK_URL`.
 If a severity-specific webhook is empty, the alert falls back to `SLACK_GENERAL_WEBHOOK_URL`.
