@@ -125,10 +125,8 @@ public class AlertWorkflowService {
             aiSuccess = false;
         }
 
-        // ✅ alertName + namespace + workload + container 기반 중복 체크
-        String alertType = AiAnalyzerMetrics.normalizeAlertType(context.alertName(), context.severity());
-        String severity = AiAnalyzerMetrics.normalizeSeverity(context.severity());
-        metrics.recordAlert(alertType, severity);
+
+
 
         boolean shouldNotify = alertThrottleService.canNotify(
             context.alertName(), 
@@ -144,6 +142,9 @@ public class AlertWorkflowService {
         boolean slackSent = false;
 
         if (shouldNotify) {
+            String alertType = AiAnalyzerMetrics.normalizeAlertType(context.alertName(), context.severity());
+            String severity = AiAnalyzerMetrics.normalizeSeverity(context.severity());
+            metrics.recordAlert(alertType, severity);
             try {
                 slackSent = slackNotifier.send(context, runbook);
                 
