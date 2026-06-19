@@ -92,8 +92,8 @@ public class GeminiRunbookClient {
                 우선 C:\\CE\\talkKing 아래의 team2-talkKing-app, team2-talkKing-config, team2-talkKing-infra 레포를 각각 dev 브랜치 최신 상태로 pull 해줘.
                 아래 장애 정보를 바탕으로 필요한 수정 후보를 찾고, app/config/infra 중 필요한 파일만 최소 변경해줘.
                 변경 전후로 관련 파일을 확인하고, 가능한 검증 명령을 실행해줘.
-                dev 브랜치에 직접 push하지 말고 새 브랜치 chore/errorops-<alert id>로 커밋하고 push한 뒤 draft PR까지 생성해줘.
-                terraform destroy, kubectl delete namespace, git reset --hard, git push origin dev, aws iam 명령은 사용하지 마.
+                dev 브랜치에 직접 push하지 말고 새 브랜치 chore/errorops-<alert id>로 커밋하고 push한 뒤 draft가 아닌 일반 pull request까지 생성해줘.
+                파괴적인 인프라 작업, 네임스페이스 삭제, 강제 리셋, dev 브랜치 직접 push, IAM 변경 작업은 하지 마.
                 마지막에 PR 링크, 변경 요약, 검증 결과, 남은 리스크를 한국어로 알려줘.
 
                 The prompt must include these alert details:
@@ -129,8 +129,8 @@ public class GeminiRunbookClient {
                 너는 TalkKing 프로젝트의 로컬 Codex야.
                 우선 C:\\CE\\talkKing 아래의 team2-talkKing-app, team2-talkKing-config, team2-talkKing-infra 레포를 각각 dev 브랜치 최신 상태로 pull 해줘.
                 아래 Kubernetes alert를 기준으로 app/config/infra 중 수정이 필요한 부분을 찾아줘.
-                필요한 파일만 최소 변경하고, dev 브랜치에 직접 push하지 말고 새 브랜치 chore/errorops-%s 로 커밋하고 push한 뒤 draft PR까지 생성해줘.
-                terraform destroy, kubectl delete namespace, git reset --hard, git push origin dev, aws iam 명령은 사용하지 마.
+                필요한 파일만 최소 변경하고, dev 브랜치에 직접 push하지 말고 새 브랜치 chore/errorops-%s 로 커밋하고 push한 뒤 draft가 아닌 일반 pull request까지 생성해줘.
+                파괴적인 인프라 작업, 네임스페이스 삭제, 강제 리셋, dev 브랜치 직접 push, IAM 변경 작업은 하지 마.
                 마지막에 PR 링크, 변경 요약, 검증 결과, 남은 리스크를 한국어로 알려줘.
 
                 장애 정보:
