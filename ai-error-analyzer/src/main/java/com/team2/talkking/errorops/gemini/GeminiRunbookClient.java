@@ -133,18 +133,22 @@ public class GeminiRunbookClient {
             return fallbackCodexTask(context, diagnostics) +
                     "\n\n진단 수집 에러:\nGemini API failed with status " + status;
 
-        } catch (java.util.concurrent.TimeoutException exception) {
-            logger.error("⏱️ Gemini API request timeout after {} seconds ({}회 시도)",
-                    timeout.getSeconds(), attemptCount.get());
-            return fallbackCodexTask(context, diagnostics) +
-                    "\n\n진단 수집 에러:\nGemini API timeout exceeded (" + timeout.getSeconds() + "s)";
-
         } catch (Exception exception) {
+            // ✅ TimeoutException과 기타 Exception을 일괄 처리
+            String errorType = exception.getClass().getSimpleName();
+            
+            if (exception instanceof java.util.concurrent.TimeoutException || 
+                errorType.contains("TimeoutException")) {
+                logger.error("⏱️ Gemini API request timeout after {} seconds ({}회 시도)",
+                        timeout.getSeconds(), attemptCount.get());
+                return fallbackCodexTask(context, diagnostics) +
+                        "\n\n진단 수집 에러:\nGemini API timeout exceeded (" + timeout.getSeconds() + "s)";
+            }
+            
             logger.error("❌ Unexpected error calling Gemini API - Type: {}, Message: {} ({}회 시도)",
-                    exception.getClass().getSimpleName(), exception.getMessage(), attemptCount.get());
+                    errorType, exception.getMessage(), attemptCount.get());
             return fallbackCodexTask(context, diagnostics) +
-                    "\n\n진단 수집 에러:\n" + exception.getClass().getSimpleName() +
-                    ": " + exception.getMessage();
+                    "\n\n진단 수집 에러:\n" + errorType + ": " + exception.getMessage();
         }
     }
 
