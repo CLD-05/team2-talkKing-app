@@ -50,7 +50,9 @@ errorops:
   gemini:
     model: ${GEMINI_MODEL:gemini-flash-latest}
     api-key: ${GEMINI_API_KEY:}
-    timeout-seconds: ${GEMINI_TIMEOUT_SECONDS:300}
+    timeout-seconds: ${GEMINI_TIMEOUT_SECONDS:30}
+    max-retries: ${GEMINI_MAX_RETRIES:3}                # ← 이 줄 추가
+    initial-delay-ms: ${GEMINI_INITIAL_DELAY_MS:1000}   # ← 이 줄 추가
 
   slack:
     general-webhook-url: ${SLACK_GENERAL_WEBHOOK_URL:}
@@ -64,4 +66,6 @@ errorops:
 logging:
   level:
     com.team2.talkking.errorops.alert: INFO
+    com.team2.talkking.errorops.gemini: INFO                # ← 추가
+    org.springframework.web.reactive.function.client: WARN  # ← 추가
     org.springframework.data.redis: WARN
