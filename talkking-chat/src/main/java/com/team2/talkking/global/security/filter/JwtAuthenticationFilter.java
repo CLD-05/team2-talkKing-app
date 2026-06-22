@@ -78,4 +78,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         
         return null;
     }
+    
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
+        String path = request.getRequestURI();
+        
+        // 엑추에이터, 헬스체크 주소는 이 JWT 필터 감시망을 무조건 패스
+        return path.startsWith("/actuator") || path.startsWith("/health");
+    }
 }
