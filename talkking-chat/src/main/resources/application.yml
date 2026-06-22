@@ -48,7 +48,7 @@ spring:
     endpoints:
       web:
         exposure:
-          include: health
+          include: "prometheus,health"
     endpoint:
       health:
         show-details: always
