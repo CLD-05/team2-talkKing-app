@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -49,6 +50,9 @@ public class GeminiRunbookClient {
             return fallbackCodexTask(context, diagnostics);
         }
 
+        // ✅ AtomicInteger로 재시도 횟수 추적
+        AtomicInteger attemptCount = new AtomicInteger(0);
+
         try {
             GeminiResponse response = webClient.post()
                     .uri("/v1beta/models/{model}:generateContent?key={apiKey}", model, apiKey)
@@ -63,80 +67,81 @@ public class GeminiRunbookClient {
                     // 429(Too Many Requests)와 5xx 에러 처리
                     .retryWhen(Retry.backoff(maxRetries, Duration.ofMillis(initialDelayMs))
                             .filter(throwable -> {
+                                int currentAttempt = attemptCount.incrementAndGet();
+
                                 if (throwable instanceof WebClientResponseException exception) {
                                     int status = exception.getStatusCode().value();
-                                    // ✅ 버그 1 수정: null 안전성 추가
                                     String body = Objects.toString(
                                             exception.getResponseBodyAsString(), "");
 
-                                    logger.warn("Gemini API error - Status: {}, Body length: {}",
-                                            status, body.length());
+                                    logger.warn("[Attempt {}/{}] Gemini API error - Status: {}, Body length: {}",
+                                            currentAttempt, maxRetries, status, body.length());
 
-                                    // ✅ 버그 2 수정: 고정 "Attempt: 3" 제거
                                     if (body.contains("RESOURCE_EXHAUSTED")) {
-                                        logger.error("❌ 할당량 부족! 재시도 중단");
+                                        logger.error("[Attempt {}/{}] ❌ 할당량 부족! 재시도 중단",
+                                                currentAttempt, maxRetries);
                                         return false;  // 재시도하지 말것
                                     } else if (body.contains("RATE_LIMIT")) {
-                                        logger.warn("⚠️ Rate Limit 감지 - 재시도 예정");
+                                        logger.warn("[Attempt {}/{}] ⚠️ Rate Limit 감지 - 재시도 예정",
+                                                currentAttempt, maxRetries);
                                         return true;   // 재시도
                                     } else if (status >= 500 && status < 600) {
-                                        logger.warn("🟡 Server Error ({}) - 재시도 예정", status);
+                                        logger.warn("[Attempt {}/{}] 🟡 Server Error ({}) - 재시도 예정",
+                                                currentAttempt, maxRetries, status);
                                         return true;   // 재시도
                                     } else if (status == 429) {
-                                        logger.warn("🟡 429 Rate Limit - 재시도 예정");
+                                        logger.warn("[Attempt {}/{}] 🟡 429 Rate Limit - 재시도 예정",
+                                                currentAttempt, maxRetries);
                                         return true;   // 재시도
                                     } else {
-                                        logger.error("❌ 복구 불가능한 오류 ({}): {}", status, body);
+                                        logger.error("[Attempt {}/{}] ❌ 복구 불가능한 오류 ({})",
+                                                currentAttempt, maxRetries, status);
                                         return false;  // 재시도하지 말것
                                     }
                                 }
                                 // 타임아웃 등 네트워크 에러도 재시도
                                 if (throwable instanceof java.util.concurrent.TimeoutException) {
-                                    logger.warn("⏱️ Timeout - 재시도 예정");
+                                    logger.warn("[Attempt {}/{}] ⏱️ Timeout - 재시도 예정",
+                                            currentAttempt, maxRetries);
                                     return true;
                                 }
 
-                                logger.error("📌 기타 에러 - 타입: {}",
-                                        throwable.getClass().getSimpleName());
+                                logger.error("[Attempt {}/{}] 📌 기타 에러 - 타입: {}",
+                                        currentAttempt, maxRetries, throwable.getClass().getSimpleName());
                                 return false;
-                            })
-                            .onRetryExhaustedThrow((retrySignal, throwable) -> {
-                                // ✅ 버그 2 수정: 정확한 재시도 횟수 로깅
-                                logger.error("❌ Gemini API 최종 실패 - 총 {} 회 시도",
-                                        retrySignal.totalRetries());
-                                return throwable;
                             })
                     )
                     .block();
 
             String text = response == null ? "" : response.firstText();
             if (text != null && !text.isBlank()) {
-                logger.info("✅ Successfully generated runbook from Gemini API");
+                logger.info("✅ Successfully generated runbook from Gemini API ({}회 시도)",
+                        attemptCount.get());
                 return text;
             }
 
-            logger.warn("⚠️ Gemini API returned empty response, using fallback");
+            logger.warn("⚠️ Gemini API returned empty response, using fallback ({}회 시도)",
+                    attemptCount.get());
             return fallbackCodexTask(context, diagnostics);
 
         } catch (WebClientResponseException exception) {
             int status = exception.getStatusCode().value();
-            // ✅ 버그 1 수정: null 안전성 추가
             String body = Objects.toString(exception.getResponseBodyAsString(), "");
 
-            logger.error("❌ WebClientResponseException - Status: {}, Body length: {}",
-                    status, body.length());
+            logger.error("❌ WebClientResponseException - Status: {}, Attempts: {}", status, attemptCount.get());
 
             return fallbackCodexTask(context, diagnostics) +
                     "\n\n진단 수집 에러:\nGemini API failed with status " + status;
 
         } catch (java.util.concurrent.TimeoutException exception) {
-            logger.error("⏱️ Gemini API request timeout after {} seconds", timeout.getSeconds());
+            logger.error("⏱️ Gemini API request timeout after {} seconds ({}회 시도)",
+                    timeout.getSeconds(), attemptCount.get());
             return fallbackCodexTask(context, diagnostics) +
                     "\n\n진단 수집 에러:\nGemini API timeout exceeded (" + timeout.getSeconds() + "s)";
 
         } catch (Exception exception) {
-            logger.error("❌ Unexpected error calling Gemini API - Type: {}, Message: {}",
-                    exception.getClass().getSimpleName(), exception.getMessage());
+            logger.error("❌ Unexpected error calling Gemini API - Type: {}, Message: {} ({}회 시도)",
+                    exception.getClass().getSimpleName(), exception.getMessage(), attemptCount.get());
             return fallbackCodexTask(context, diagnostics) +
                     "\n\n진단 수집 에러:\n" + exception.getClass().getSimpleName() +
                     ": " + exception.getMessage();
