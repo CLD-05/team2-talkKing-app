@@ -21,7 +21,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: none
     show-sql: true
     # PostgreSQL 환경에 맞게 하이버네이트 방언 추가 (권장)
     properties:
