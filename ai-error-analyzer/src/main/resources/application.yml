@@ -51,7 +51,7 @@ errorops:
     model: ${GEMINI_MODEL:gemini-flash-latest}
     api-key: ${GEMINI_API_KEY:}
     timeout-seconds: ${GEMINI_TIMEOUT_SECONDS:30}
-    max-retries: ${GEMINI_MAX_RETRIES:3}                # ← 이 줄 추가
+    max-retries: ${GEMINI_MAX_RETRIES:2}                # ← 이 줄 추가
     initial-delay-ms: ${GEMINI_INITIAL_DELAY_MS:1000}   # ← 이 줄 추가
 
   slack:
