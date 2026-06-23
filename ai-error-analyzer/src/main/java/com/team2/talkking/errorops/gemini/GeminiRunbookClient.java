@@ -35,24 +35,49 @@ public class GeminiRunbookClient {
             return fallbackCodexTask(context, diagnostics);
         }
 
-        try {
-            GeminiResponse response = webClient.post()
-                    .uri("/v1beta/models/{model}:generateContent?key={apiKey}", model, apiKey)
-                    .bodyValue(Map.of(
-                            "contents", List.of(Map.of(
-                                    "parts", List.of(Map.of("text", prompt))
-                            ))
-                    ))
-                    .retrieve()
-                    .bodyToMono(GeminiResponse.class)
-                    .timeout(timeout)
-                    .block();
+        // ✅ 재시도 로직 추가
+        int maxRetries = 2;
+        long initialDelayMs = 1000;
 
-            String text = response == null ? "" : response.firstText();
-            return text == null || text.isBlank() ? fallbackCodexTask(context, diagnostics) : text;
-        } catch (Exception exception) {
-            return fallbackCodexTask(context, diagnostics) + "\n\nGemini call failed: " + exception.getMessage();
+        for (int attempt = 1; attempt <= maxRetries + 1; attempt++) {
+            try {
+                GeminiResponse response = webClient.post()
+                        .uri("/v1beta/models/{model}:generateContent?key={apiKey}", model, apiKey)
+                        .bodyValue(Map.of(
+                                "contents", List.of(Map.of(
+                                        "parts", List.of(Map.of("text", prompt))
+                                ))
+                        ))
+                        .retrieve()
+                        .bodyToMono(GeminiResponse.class)
+                        .timeout(timeout)
+                        .block();
+
+                String text = response == null ? "" : response.firstText();
+                if (text != null && !text.isBlank()) {
+                    return text;
+                }
+                return fallbackCodexTask(context, diagnostics);
+
+            } catch (Exception exception) {
+                String errorMsg = exception.getMessage();
+                
+                // 재시도 가능한 상황인지 확인 (503, Timeout)
+                if (attempt < maxRetries + 1 && (errorMsg.contains("503") || errorMsg.contains("Timeout"))) {
+                    long delayMs = initialDelayMs * attempt;
+                    try {
+                        Thread.sleep(delayMs);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                } else {
+                    // 마지막 시도 또는 재시도 불가능한 에러
+                    return fallbackCodexTask(context, diagnostics) + "\n\nGemini call failed: " + errorMsg;
+                }
+            }
         }
+
+        return fallbackCodexTask(context, diagnostics) + "\n\nGemini call failed: Max retries exceeded";
     }
 
     private String buildPrompt(AlertContext context, KubernetesDiagnostics diagnostics) {
