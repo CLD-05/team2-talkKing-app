@@ -2,16 +2,18 @@ package com.team2.talkking.errorops.gemini;
 
 import com.team2.talkking.errorops.alert.AlertContext;
 import com.team2.talkking.errorops.kubernetes.KubernetesDiagnostics;
+import io.netty.handler.timeout.ReadTimeoutException;
+import io.netty.handler.timeout.WriteTimeoutException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.util.retry.Retry;
 
@@ -32,7 +34,7 @@ public class GeminiRunbookClient {
             @Value("${errorops.gemini.api-key:}") String apiKey,
             @Value("${errorops.gemini.model:gemini-flash-latest}") String model,
             @Value("${errorops.gemini.timeout-seconds:30}") long timeoutSeconds,
-            @Value("${errorops.gemini.max-retries:3}") int maxRetries,
+            @Value("${errorops.gemini.max-retries:2}") int maxRetries,
             @Value("${errorops.gemini.initial-delay-ms:1000}") long initialDelayMs
     ) {
         this.webClient = webClientBuilder.baseUrl("https://generativelanguage.googleapis.com").build();
@@ -50,7 +52,7 @@ public class GeminiRunbookClient {
             return fallbackCodexTask(context, diagnostics);
         }
 
-        // ✅ AtomicInteger로 재시도 횟수 추적
+        // ✅ 재시도 횟수를 추적할 변수 (doBeforeRetry에서 관리)
         AtomicInteger attemptCount = new AtomicInteger(0);
 
         try {
@@ -64,51 +66,14 @@ public class GeminiRunbookClient {
                     .retrieve()
                     .bodyToMono(GeminiResponse.class)
                     .timeout(timeout)
-                    // 429(Too Many Requests)와 5xx 에러 처리
+                    // ✅ filter는 조건만, 카운팅은 doBeforeRetry에서
                     .retryWhen(Retry.backoff(maxRetries, Duration.ofMillis(initialDelayMs))
-                            .filter(throwable -> {
+                            .filter(throwable -> shouldRetry(throwable))
+                            .doBeforeRetry(retrySignal -> {
                                 int currentAttempt = attemptCount.incrementAndGet();
-
-                                if (throwable instanceof WebClientResponseException exception) {
-                                    int status = exception.getStatusCode().value();
-                                    String body = Objects.toString(
-                                            exception.getResponseBodyAsString(), "");
-
-                                    logger.warn("[Attempt {}/{}] Gemini API error - Status: {}, Body length: {}",
-                                            currentAttempt, maxRetries, status, body.length());
-
-                                    if (body.contains("RESOURCE_EXHAUSTED")) {
-                                        logger.error("[Attempt {}/{}] ❌ 할당량 부족! 재시도 중단",
-                                                currentAttempt, maxRetries);
-                                        return false;  // 재시도하지 말것
-                                    } else if (body.contains("RATE_LIMIT")) {
-                                        logger.warn("[Attempt {}/{}] ⚠️ Rate Limit 감지 - 재시도 예정",
-                                                currentAttempt, maxRetries);
-                                        return true;   // 재시도
-                                    } else if (status >= 500 && status < 600) {
-                                        logger.warn("[Attempt {}/{}] 🟡 Server Error ({}) - 재시도 예정",
-                                                currentAttempt, maxRetries, status);
-                                        return true;   // 재시도
-                                    } else if (status == 429) {
-                                        logger.warn("[Attempt {}/{}] 🟡 429 Rate Limit - 재시도 예정",
-                                                currentAttempt, maxRetries);
-                                        return true;   // 재시도
-                                    } else {
-                                        logger.error("[Attempt {}/{}] ❌ 복구 불가능한 오류 ({})",
-                                                currentAttempt, maxRetries, status);
-                                        return false;  // 재시도하지 말것
-                                    }
-                                }
-                                // 타임아웃 등 네트워크 에러도 재시도
-                                if (throwable instanceof java.util.concurrent.TimeoutException) {
-                                    logger.warn("[Attempt {}/{}] ⏱️ Timeout - 재시도 예정",
-                                            currentAttempt, maxRetries);
-                                    return true;
-                                }
-
-                                logger.error("[Attempt {}/{}] 📌 기타 에러 - 타입: {}",
-                                        currentAttempt, maxRetries, throwable.getClass().getSimpleName());
-                                return false;
+                                Throwable throwable = retrySignal.failure();
+                                
+                                logRetryAttempt(currentAttempt, throwable);
                             })
                     )
                     .block();
@@ -134,11 +99,10 @@ public class GeminiRunbookClient {
                     "\n\n진단 수집 에러:\nGemini API failed with status " + status;
 
         } catch (Exception exception) {
-            // ✅ TimeoutException과 기타 Exception을 일괄 처리
+            // ✅ 모든 타임아웃 예외를 정확하게 처리
             String errorType = exception.getClass().getSimpleName();
             
-            if (exception instanceof java.util.concurrent.TimeoutException || 
-                errorType.contains("TimeoutException")) {
+            if (isTimeoutException(exception)) {
                 logger.error("⏱️ Gemini API request timeout after {} seconds ({}회 시도)",
                         timeout.getSeconds(), attemptCount.get());
                 return fallbackCodexTask(context, diagnostics) +
@@ -150,6 +114,78 @@ public class GeminiRunbookClient {
             return fallbackCodexTask(context, diagnostics) +
                     "\n\n진단 수집 에러:\n" + errorType + ": " + exception.getMessage();
         }
+    }
+
+    // ✅ filter에서만 사용: 재시도 여부만 판정
+    private boolean shouldRetry(Throwable throwable) {
+        if (throwable instanceof WebClientResponseException exception) {
+            int status = exception.getStatusCode().value();
+            String body = Objects.toString(exception.getResponseBodyAsString(), "");
+
+            if (body.contains("RESOURCE_EXHAUSTED")) {
+                return false;  // 재시도 안 함
+            } else if (body.contains("RATE_LIMIT") || status == 429) {
+                return true;   // 재시도
+            } else if (status >= 500 && status < 600) {
+                return true;   // 재시도
+            }
+            return false;
+        }
+        
+        return isTimeoutException(throwable);  // 타임아웃도 재시도
+    }
+
+    // ✅ doBeforeRetry에서 사용: 재시도 로깅
+    private void logRetryAttempt(int currentAttempt, Throwable throwable) {
+        if (throwable instanceof WebClientResponseException exception) {
+            int status = exception.getStatusCode().value();
+            String body = Objects.toString(exception.getResponseBodyAsString(), "");
+
+            if (body.contains("RESOURCE_EXHAUSTED")) {
+                logger.error("[Attempt {}/{}] ❌ 할당량 부족! 재시도 중단",
+                        currentAttempt, maxRetries);
+            } else if (body.contains("RATE_LIMIT")) {
+                logger.warn("[Attempt {}/{}] ⚠️ Rate Limit 감지 - 재시도 예정",
+                        currentAttempt, maxRetries);
+            } else if (status >= 500 && status < 600) {
+                logger.warn("[Attempt {}/{}] 🟡 Server Error ({}) - 재시도 예정",
+                        currentAttempt, maxRetries, status);
+            } else if (status == 429) {
+                logger.warn("[Attempt {}/{}] 🟡 429 Rate Limit - 재시도 예정",
+                        currentAttempt, maxRetries);
+            } else {
+                logger.error("[Attempt {}/{}] ❌ 복구 불가능한 오류 ({})",
+                        currentAttempt, maxRetries, status);
+            }
+        } else if (isTimeoutException(throwable)) {
+            logger.warn("[Attempt {}/{}] ⏱️ Timeout - 재시도 예정",
+                    currentAttempt, maxRetries);
+        } else {
+            logger.error("[Attempt {}/{}] 📌 기타 에러 - 타입: {}",
+                    currentAttempt, maxRetries, throwable.getClass().getSimpleName());
+        }
+    }
+
+    // ✅ 모든 타임아웃 예외를 정확하게 판정하는 메서드
+    private boolean isTimeoutException(Throwable throwable) {
+        if (throwable == null) return false;
+        
+        // 직접 체크
+        if (throwable instanceof java.util.concurrent.TimeoutException) return true;
+        if (throwable instanceof ReadTimeoutException) return true;
+        if (throwable instanceof WriteTimeoutException) return true;
+        
+        // 클래스명 체크
+        String className = throwable.getClass().getName();
+        if (className.contains("TimeoutException") || 
+            className.contains("TimeoutError")) return true;
+        
+        // 원인 예외 재귀 확인
+        if (throwable.getCause() != null) {
+            return isTimeoutException(throwable.getCause());
+        }
+        
+        return false;
     }
 
     private String buildPrompt(AlertContext context, KubernetesDiagnostics diagnostics) {
@@ -192,12 +228,6 @@ public class GeminiRunbookClient {
                 dev 브랜치에 직접 push하지 말고 새 브랜치 chore/errorops-<alert id>로 커밋하고 push한 뒤 draft가 아닌 일반 pull request까지 생성해줘.
                 파괴적인 인프라 작업, 네임스페이스 삭제, 강제 리셋, dev 브랜치 직접 push, IAM 변경 작업은 하지 마.
                 마지막에 PR 링크, 변경 요약, 검증 결과, 남은 리스크를 한국어로 알려줘.
-
-                The prompt must include these alert details:
-                - alert name, severity, namespace, pod, container
-                - Kubernetes pod phase
-                - recent Kubernetes events
-                - recent logs
                 """.formatted(
                 context.alertName(),
                 context.severity(),
@@ -208,7 +238,7 @@ public class GeminiRunbookClient {
                 context.description(),
                 diagnostics.podPhase(),
                 formatEvents(diagnostics.recentEvents()),
-                truncate(diagnostics.recentLogs(), 6000),
+                truncate(diagnostics.recentLogs(), 50000),
                 safeId(context.fingerprint()),
                 context.severity()
         );
@@ -262,7 +292,7 @@ public class GeminiRunbookClient {
                 context.description(),
                 diagnostics.podPhase(),
                 formatEvents(diagnostics.recentEvents()),
-                truncate(diagnostics.recentLogs(), 6000),
+                truncate(diagnostics.recentLogs(), 50000),
                 diagnostics.errorMessage()
         );
     }
