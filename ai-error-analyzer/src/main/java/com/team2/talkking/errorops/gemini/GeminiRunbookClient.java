@@ -105,6 +105,11 @@ public class GeminiRunbookClient {
                 - logs:
                 %s
 
+                ⚠️ CRITICAL INSTRUCTION ⚠️
+                DO NOT include any logs in the middle of your [CODEX_TASK] output.
+                DO NOT include logs in the prompt section.
+                You MUST put all logs ONLY in a [RAW LOGS] section at the absolute end of your entire output.
+
                 Required output format:
 
                 [CODEX_TASK]
@@ -119,14 +124,12 @@ public class GeminiRunbookClient {
                 변경 전후로 관련 파일을 확인하고, 가능한 검증 명령을 실행해줘.
                 dev 브랜치에 직접 push하지 말고 새 브랜치 chore/errorops-<alert id>로 커밋하고 push한 뒤 draft가 아닌 일반 pull request까지 생성해줘.
                 파괴적인 인프라 작업, 네임스페이스 삭제, 강제 리셋, dev 브랜치 직접 push, IAM 변경 작업은 하지 마.
-                마지막에 PR 링크, 변경 요약, 검증 결과, 남은 리스크를 한국어로 알려주고,
-                반드시 [RAW LOGS] 섹션을 만들어 네가 전달받은 로그 원본을 그대로 덧붙여줘.
-
+                마지막에 PR 링크, 변경 요약, 검증 결과, 남은 리스크를 한국어로 알려줘.
+                
                 The prompt must include these alert details:
                 - alert name, severity, namespace, pod, container
                 - Kubernetes pod phase
                 - recent Kubernetes events
-                - recent logs
                 """.formatted(
                 context.alertName(),
                 context.severity(),
