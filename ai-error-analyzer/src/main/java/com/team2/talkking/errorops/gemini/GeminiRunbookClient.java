@@ -21,7 +21,7 @@ public class GeminiRunbookClient {
             WebClient.Builder webClientBuilder,
             @Value("${errorops.gemini.api-key:}") String apiKey,
             @Value("${errorops.gemini.model:gemini-flash-latest}") String model,
-            @Value("${errorops.gemini.timeout-seconds:30}") long timeoutSeconds
+            @Value("${errorops.gemini.timeout-seconds:60}") long timeoutSeconds
     ) {
         this.webClient = webClientBuilder.baseUrl("https://generativelanguage.googleapis.com").build();
         this.apiKey = apiKey;
@@ -121,7 +121,7 @@ public class GeminiRunbookClient {
                 파괴적인 인프라 작업, 네임스페이스 삭제, 강제 리셋, dev 브랜치 직접 push, IAM 변경 작업은 하지 마.
                 마지막에 PR 링크, 변경 요약, 검증 결과, 남은 리스크를 한국어로 알려주고,
                 반드시 [RAW LOGS] 섹션을 만들어 네가 전달받은 로그 원본을 그대로 덧붙여줘.
-                
+
                 The prompt must include these alert details:
                 - alert name, severity, namespace, pod, container
                 - Kubernetes pod phase
