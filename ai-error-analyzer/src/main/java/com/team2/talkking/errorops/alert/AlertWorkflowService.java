@@ -2,6 +2,7 @@ package com.team2.talkking.errorops.alert;
 
 import com.team2.talkking.errorops.gemini.GeminiRunbookClient;
 import com.team2.talkking.errorops.history.AlertHistoryService;
+import com.team2.talkking.errorops.history.AlertSafetyAuditEngine;
 import com.team2.talkking.errorops.kubernetes.KubernetesDiagnosticService;
 import com.team2.talkking.errorops.kubernetes.KubernetesDiagnostics;
 import com.team2.talkking.errorops.slack.SlackNotifier;
@@ -21,6 +22,7 @@ public class AlertWorkflowService {
     private final SlackNotifier slackNotifier;
     private final AlertThrottleServiceRedis alertThrottleService;
     private final AlertHistoryService alertHistoryService;
+    private final AlertSafetyAuditEngine alertSafetyAuditEngine;
     private final AiAnalyzerMetrics metrics;
 
     public AlertWorkflowService(
@@ -30,6 +32,7 @@ public class AlertWorkflowService {
             SlackNotifier slackNotifier,
             AlertThrottleServiceRedis alertThrottleService,
             AlertHistoryService alertHistoryService,
+            AlertSafetyAuditEngine alertSafetyAuditEngine,
             AiAnalyzerMetrics metrics
     ) {
         this.alertContextFactory = alertContextFactory;
@@ -38,6 +41,7 @@ public class AlertWorkflowService {
         this.slackNotifier = slackNotifier;
         this.alertThrottleService = alertThrottleService;
         this.alertHistoryService = alertHistoryService;
+        this.alertSafetyAuditEngine = alertSafetyAuditEngine;
         this.metrics = metrics;
     }
 
@@ -125,9 +129,6 @@ public class AlertWorkflowService {
             aiSuccess = false;
         }
 
-
-
-
         boolean shouldNotify = alertThrottleService.canNotify(
             context.alertName(), 
             context.namespace(), 
@@ -174,6 +175,13 @@ public class AlertWorkflowService {
             alertHistoryService.save(context, diagnostics, runbook, slackSent);
         } catch (Exception e) {
             log.error("Failed to save alert history for alert: {}", context.alertName(), e);
+        }
+
+        // 🛡️ [보안 보완 레이어 배치] 히스토리 저장이 끝난 후, 즉각 영속화 데이터 기반 취약점 점검 스캔
+        try {
+            alertSafetyAuditEngine.auditAIActions();
+        } catch (Exception e) {
+            log.error("Failed to run safety audit engine for alert: {}", context.alertName(), e);
         }
 
          // 응답시간 + 성공/실패 기록
