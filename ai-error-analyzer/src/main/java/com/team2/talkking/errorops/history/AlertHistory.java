@@ -13,10 +13,18 @@ import lombok.*;
 @Builder
 @Table(name = "alert_history")
 @IdClass(AlertHistory.AlertHistoryId.class)
+// 1. 엔티티 클래스 위에 시퀀스 제네레이터를 선언해 줍니다.
+@SequenceGenerator(
+    name = "alert_history_seq_gen",
+    sequenceName = "alert_history_id_seq", // DB에 만들어둔 시퀀스 이름과 매칭
+    allocationSize = 1
+)
 public class AlertHistory {
 
     @Id
-    private Long id; // 🚀 DB의 SERIAL이 자동으로 매핑되므로 @GeneratedValue를 제거하여 파티션 복합키 충돌 방지
+    // 2. id 컬럼 위에 시퀀스 전략을 지정해 줍니다. 이렇게 하면 null 대신 시퀀스 번호가 박혀서 나갑니다.
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "alert_history_seq_gen")
+    private Long id; 
 
     @Id
     private LocalDateTime createdAt;
