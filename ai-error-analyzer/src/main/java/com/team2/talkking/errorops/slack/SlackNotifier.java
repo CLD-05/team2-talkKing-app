@@ -2,6 +2,7 @@ package com.team2.talkking.errorops.slack;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.team2.talkking.errorops.alert.AlertContext;
+import com.team2.talkking.errorops.history.AlertSafetyAuditEngine; // ◄ 감사 엔진 임포트
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -25,6 +26,7 @@ public class SlackNotifier {
     private final String codexQueueWebhookUrl;
     private final String codexBotToken;
     private final String codexChannelId;
+    private final AlertSafetyAuditEngine alertSafetyAuditEngine; // ◄ 1. 멤버 변수 추가
 
     public SlackNotifier(
             WebClient.Builder webClientBuilder,
@@ -34,7 +36,8 @@ public class SlackNotifier {
             @Value("${errorops.slack.info-webhook-url:}") String infoWebhookUrl,
             @Value("${errorops.slack.codex-queue-webhook-url:}") String codexQueueWebhookUrl,
             @Value("${errorops.slack.codex-bot-token:}") String codexBotToken,
-            @Value("${errorops.slack.codex-channel-id:}") String codexChannelId
+            @Value("${errorops.slack.codex-channel-id:}") String codexChannelId,
+            AlertSafetyAuditEngine alertSafetyAuditEngine // ◄ 2. 생성자 주입 추가
     ) {
         this.webClient = webClientBuilder.build();
         this.generalWebhookUrl = generalWebhookUrl;
@@ -44,6 +47,7 @@ public class SlackNotifier {
         this.codexQueueWebhookUrl = codexQueueWebhookUrl;
         this.codexBotToken = codexBotToken;
         this.codexChannelId = codexChannelId;
+        this.alertSafetyAuditEngine = alertSafetyAuditEngine; // ◄ 3. 필드 할당
     }
 
     public boolean send(AlertContext context, String runbook) {
@@ -56,20 +60,24 @@ public class SlackNotifier {
             return false;
         }
 
+        // 일반 웹훅 경로일 때도 짤리지 않게 본문 바깥 최하단에 바인딩
+        String auditWarning = alertSafetyAuditEngine.auditAIActions(runbook);
         String message = isCodexQueueSelected(selectedWebhookUrl)
                 ? runbook
                 : """
-                        *[%s] %s*
-                        namespace: `%s`
-                        pod: `%s`
+                    *[%s] %s*
+                    namespace: `%s`
+                    pod: `%s`
 
-                        %s
-                        """.formatted(
+                    %s
+                    %s
+                    """.formatted(
                         context.severity(),
                         context.alertName(),
                         context.namespace(),
                         context.pod(),
-                        runbook
+                        runbook,
+                        auditWarning // 일반 메시지창 최하단 독립 배치
                 );
 
         try {
@@ -99,10 +107,14 @@ public class SlackNotifier {
 
             uploadPromptBytes(uploadUrlResponse.uploadUrl(), bytes);
 
+            // ◄ 핵심: 파일 업로드할 때, 원본 대용량 프롬프트(prompt)를 기반으로 스캔한 결과를 코멘트 메시지 뒤에 연결합니다.
+            String auditWarning = alertSafetyAuditEngine.auditAIActions(prompt);
+            String initialComment = buildCodexTaskMessage(context, filename) + auditWarning;
+
             CompleteUploadResponse completeUploadResponse = completeUpload(
                     uploadUrlResponse.fileId(),
                     filename,
-                    buildCodexTaskMessage(context, filename)
+                    initialComment // 스니펫 박스 바깥 텍스트로 전달
             );
             return completeUploadResponse != null && completeUploadResponse.ok();
         } catch (Exception exception) {
@@ -166,8 +178,7 @@ public class SlackNotifier {
                 prompt_file: %s
 
                 승인: :white_check_mark: 2명
-                거절: :x:
-                """.formatted(
+                거절: :x:""".formatted( // ◄ 밑에 여백 조절을 위해 줄바꿈 기호 제거
                 safeId(context.fingerprint()),
                 context.alertName(),
                 context.severity(),

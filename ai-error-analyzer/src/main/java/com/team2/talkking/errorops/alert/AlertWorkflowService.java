@@ -2,7 +2,6 @@ package com.team2.talkking.errorops.alert;
 
 import com.team2.talkking.errorops.gemini.GeminiRunbookClient;
 import com.team2.talkking.errorops.history.AlertHistoryService;
-import com.team2.talkking.errorops.history.AlertSafetyAuditEngine;
 import com.team2.talkking.errorops.kubernetes.KubernetesDiagnosticService;
 import com.team2.talkking.errorops.kubernetes.KubernetesDiagnostics;
 import com.team2.talkking.errorops.slack.SlackNotifier;
@@ -22,7 +21,6 @@ public class AlertWorkflowService {
     private final SlackNotifier slackNotifier;
     private final AlertThrottleServiceRedis alertThrottleService;
     private final AlertHistoryService alertHistoryService;
-    private final AlertSafetyAuditEngine alertSafetyAuditEngine;
     private final AiAnalyzerMetrics metrics;
 
     public AlertWorkflowService(
@@ -32,7 +30,6 @@ public class AlertWorkflowService {
             SlackNotifier slackNotifier,
             AlertThrottleServiceRedis alertThrottleService,
             AlertHistoryService alertHistoryService,
-            AlertSafetyAuditEngine alertSafetyAuditEngine,
             AiAnalyzerMetrics metrics
     ) {
         this.alertContextFactory = alertContextFactory;
@@ -41,7 +38,6 @@ public class AlertWorkflowService {
         this.slackNotifier = slackNotifier;
         this.alertThrottleService = alertThrottleService;
         this.alertHistoryService = alertHistoryService;
-        this.alertSafetyAuditEngine = alertSafetyAuditEngine;
         this.metrics = metrics;
     }
 
@@ -147,6 +143,7 @@ public class AlertWorkflowService {
             String severity = AiAnalyzerMetrics.normalizeSeverity(context.severity());
             metrics.recordAlert(alertType, severity);
             try {
+                // 런북 본문 한 통만 깔끔하게 전달 (감사와 가공은 SlackNotifier 내부에서 독립 처리)
                 slackSent = slackNotifier.send(context, runbook);
                 
                 if (slackSent) {
@@ -170,18 +167,11 @@ public class AlertWorkflowService {
                 context.container());
         }
 
-        // ✅ 히스토리 저장 (실패해도 무시)
+        // ✅ 히스토리 저장 (실패해도 무시) -> 최종 결과가 DB 파티션에도 이쁘게 영속화됩니다.
         try {
             alertHistoryService.save(context, diagnostics, runbook, slackSent);
         } catch (Exception e) {
             log.error("Failed to save alert history for alert: {}", context.alertName(), e);
-        }
-
-        // 🛡️ [보안 보완 레이어 배치] 히스토리 저장이 끝난 후, 즉각 영속화 데이터 기반 취약점 점검 스캔
-        try {
-            alertSafetyAuditEngine.auditAIActions();
-        } catch (Exception e) {
-            log.error("Failed to run safety audit engine for alert: {}", context.alertName(), e);
         }
 
          // 응답시간 + 성공/실패 기록
