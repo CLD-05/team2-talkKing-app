@@ -3,18 +3,10 @@ package com.team2.talkking.errorops.history;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-/**
- * 🛡️ AI Error Ops 보안 감사 엔진 (Safety Audit Engine)
- * 역할: AI가 생성한 결과물(Runbook/PR 요약)을 실시간 분석하여 금지된 행동을 수행했는지 검증하고 위험 징후를 추적.
- */
 @Slf4j
 @Component
 public class AlertSafetyAuditEngine {
 
-    /**
-     * AI가 생성한 런북 본문을 실시간으로 파싱하여
-     * 금지된 파괴적 작업 패턴이 보일 경우 슬랙 하단에 부착할 경고 메시지를 생성합니다.
-     */
     public String auditAIActions(String runbook) {
         log.info("🛡️ [인프라 안심 감사 엔진 가동] AI 생성 결과물 실시간 취약점 스캔 시작...");
 
@@ -22,18 +14,29 @@ public class AlertSafetyAuditEngine {
             return "";
         }
 
-        // 금지 키워드 포함 여부 검사
-        boolean destructive = runbook.contains("delete") || runbook.contains("네임스페이스") || runbook.contains("삭제");
-        boolean iamRisk = runbook.contains("IAM") || runbook.contains("권한");
+        // 🎯 [핵심 패치] 프롬프트(지시문) 영역에 포함된 금지어 규칙 오탐 방지
+        String targetText = runbook;
+        
+        // AI 분석 결과물(Summary)이 시작되는 지점을 찾아서 그 이후의 텍스트만 검사 대상으로 삼습니다.
+        if (runbook.contains("[Summary]")) {
+            targetText = runbook.substring(runbook.indexOf("[Summary]"));
+        } else if (runbook.contains("Gemini call failed:")) {
+            // 만약 이번처럼 AI가 에러를 뿜어서 분석 결과가 없는 상태라면 검사를 스킵합니다.
+            log.info("✅ AI 분석 호출이 실패한 Fallback 메시지이므로 보안 검사를 스킵합니다.");
+            return "";
+        }
+
+        // 이제 프롬프트가 아닌 'AI의 실제 조치 제안 본문'만 가지고 금지 키워드를 검사합니다.
+        boolean destructive = targetText.contains("delete") || targetText.contains("네임스페이스") || targetText.contains("삭제");
+        boolean iamRisk = targetText.contains("IAM") || targetText.contains("권한");
 
         if (!destructive && !iamRisk) {
             log.info("✅ AI가 안전 가이드라인을 완벽히 준수했습니다.");
-            return ""; // 안전하다면 빈 문자열 반환
+            return "";
         }
 
-        log.warn("🚨 [AI 규정 위반 징후 포착] 실시간 런북 내 가이드라인 위반 키워드 탐지됨.");
+        log.warn("🚨 [AI 규정 위반 징후 포착] AI가 제안한 조치 본문 내 위반 키워드 탐지됨.");
         
-        // 슬랙 마크다운 포맷에 맞춘 경고 문구 조합
         StringBuilder warningMessage = new StringBuilder();
         warningMessage.append("\n\n--------------------------------------------------");
         warningMessage.append("\n*🚨 [Safety Audit Engine 보안 감사 경고]*");
