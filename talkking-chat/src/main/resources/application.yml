@@ -8,7 +8,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: "prometheus1,health"
+        include: "prometheus,health"
   endpoint:
     health:
       show-details: always
