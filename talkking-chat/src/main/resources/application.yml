@@ -13,7 +13,7 @@ management:
     health:
       show-details: always
       probes:
-        enabled: true
+        enabled: false
   metrics:
     tags:
       # 수집되는 모든 데이터에 애플리케이션 이름을 꼬리표(Tag)로 강제 매핑합니다.
