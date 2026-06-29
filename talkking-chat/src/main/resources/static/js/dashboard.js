@@ -480,9 +480,10 @@ function createMessageNode(message) {
     msgWrapper.style.flexDirection = 'column';
     msgWrapper.style.marginBottom = '8px'; 
     const textContent = message.message || message.content || ""; 
+    const isSystemText = textContent.includes("입장하셨습니다") || textContent.includes("퇴장하셨습니다");
 
     // 🎯 [수정] 백엔드 세션 유실 및 LEAVE 규격 방어막 추가
-    if (message.type === "ENTER" || message.type === "QUIT" || message.type === "LEAVE") {
+    if (message.type === "ENTER" || message.type === "QUIT" || message.type === "LEAVE" || isSystemText) {
         const systemNoticeDiv = document.createElement('div');
         systemNoticeDiv.style.alignSelf = 'center'; 
         systemNoticeDiv.style.background = '#e2e8f0'; 
@@ -495,7 +496,6 @@ function createMessageNode(message) {
         msgWrapper.appendChild(systemNoticeDiv);
         return msgWrapper;
     }
-
     const msgDiv = document.createElement('div');
     const displayName = message.senderNickname || `유저(${message.sender})`;
 
