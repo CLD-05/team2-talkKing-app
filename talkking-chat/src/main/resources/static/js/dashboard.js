@@ -197,7 +197,7 @@ function subscribeToRoom(roomId) {
         if (Number(currentRoomId) === Number(roomId)) {
             displayMessage(messageBody);
             
-            if (messageBody.type === "ENTER" || messageBody.type === "QUIT") {
+            if (messageBody.type === "ENTER" || messageBody.type === "QUIT" || messageBody.type === "LEAVE") {
                 fetch(`/api/chat/rooms/${roomId}/users`, {
                     method: 'GET',
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -481,7 +481,8 @@ function createMessageNode(message) {
     msgWrapper.style.marginBottom = '8px'; 
     const textContent = message.message || message.content || ""; 
 
-    if (message.type === "ENTER" || message.type === "QUIT") {
+    // 🎯 [수정] 백엔드 세션 유실 및 LEAVE 규격 방어막 추가
+    if (message.type === "ENTER" || message.type === "QUIT" || message.type === "LEAVE") {
         const systemNoticeDiv = document.createElement('div');
         systemNoticeDiv.style.alignSelf = 'center'; 
         systemNoticeDiv.style.background = '#e2e8f0'; 
