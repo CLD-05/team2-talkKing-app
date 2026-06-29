@@ -12,7 +12,7 @@ env:
   ECR_REPOSITORY_CHAT: team2-talkking/chat-service
   ECR_REPOSITORY_NOTIFICATION: team2-talkking/notification-service
   ECR_REPOSITORY_ANALYZER: team2-talkking/ai-error-analyzer
-
+  
 jobs:
   # ── chat 모듈 ──────────────────────────────
   build-chat:
@@ -93,7 +93,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # GitHub OIDC를 사용한 AWS 인증
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -107,7 +106,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Chat 이미지 빌드 및 푸시
       - name: Build and push chat image
         uses: docker/build-push-action@v5
         with:
@@ -122,7 +120,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Notification 이미지 빌드 및 푸시
       - name: Build and push notification image
         uses: docker/build-push-action@v5
         with:
@@ -137,12 +134,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Image pushed successfully
-        run: |
-          echo "Chat image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_CHAT }}:${{ github.sha }}"
-          echo "Notification image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_NOTIFICATION }}:${{ github.sha }}"
-
-      # AI Error Analyzer 이미지 빌드 및 푸시 (새로 추가!)
       - name: Build and push analyzer image
         uses: docker/build-push-action@v5
         with:
@@ -157,7 +148,13 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── GitOps: Config Repository 업데이트 ──────────────────────
+      - name: Image pushed successfully
+        run: |
+          echo "Chat image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_CHAT }}:${{ github.sha }}"
+          echo "Notification image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_NOTIFICATION }}:${{ github.sha }}"
+          echo "Analyzer image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_ANALYZER }}:${{ github.sha }}"
+
+ # ── GitOps: Config Repository 업데이트 ──────────────────────
   update-config:
     needs: [push-to-ecr]
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev' && success()
@@ -170,37 +167,43 @@ jobs:
           repository: ${{ github.repository_owner }}/team2-talkKing-config
           token: ${{ secrets.CONFIG_REPO_TOKEN }}
 
-      - name: Update image tags
-        working-directory: overlays/dev
+      - name: Update image tags for dev and prod
         env:
           IMAGE_TAG: ${{ github.sha }}
           ECR_REGISTRY: ${{ env.ECR_REGISTRY }}
           ECR_REPOSITORY_CHAT: ${{ env.ECR_REPOSITORY_CHAT }}
           ECR_REPOSITORY_NOTIFICATION: ${{ env.ECR_REPOSITORY_NOTIFICATION }}
+          ECR_REPOSITORY_ANALYZER: ${{ env.ECR_REPOSITORY_ANALYZER }}
         run: |
-          # kustomize 설치
+          set -e  # 에러 발생 시 즉시 중단
+
+          # 1. kustomize 설치
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
           
-          # 이미지 태그 업데이트
-          kustomize edit set image \
-            "talkking-chat=$ECR_REGISTRY/$ECR_REPOSITORY_CHAT:$IMAGE_TAG" \
-            "talkking-notification=$ECR_REGISTRY/$ECR_REPOSITORY_NOTIFICATION:$IMAGE_TAG" \
-            "ai-error-analyzer=$ECR_REGISTRY/$ECR_REPOSITORY_ANALYZER:$IMAGE_TAG"
-          
-          echo "Updated kustomization.yaml"
+          # 2. 반복문을 통해 dev, prod 순차 업데이트
+          for ENV in dev prod; do
+            echo "Updating kustomization.yaml for $ENV..."
+            cd overlays/$ENV
+            kustomize edit set image \
+              "talkking-chat=$ECR_REGISTRY/$ECR_REPOSITORY_CHAT:$IMAGE_TAG" \
+              "talkking-notification=$ECR_REGISTRY/$ECR_REPOSITORY_NOTIFICATION:$IMAGE_TAG" \
+              "ai-error-analyzer=$ECR_REGISTRY/$ECR_REPOSITORY_ANALYZER:$IMAGE_TAG"
+            cd ../..
+            echo "Completed for $ENV"
+          done
 
       - name: Commit and push
-        working-directory: .
         run: |
+          set -e # 에러 발생 시 즉시 중단
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
           if git diff --quiet; then
             echo "No changes to commit"
           else
-            git add overlays/dev/kustomization.yaml
-            git commit -m "chore: update image tags to ${{ github.sha }}"
+            git add overlays/dev/kustomization.yaml overlays/prod/kustomization.yaml
+            git commit -m "chore: update image tags to ${{ github.sha }} for dev and prod"
             git push
-            echo "Config repository updated"
+            echo "Config repository updated successfully"
           fi
