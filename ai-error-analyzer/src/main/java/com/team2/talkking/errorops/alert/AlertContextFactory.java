@@ -15,14 +15,22 @@ public class AlertContextFactory {
         
         String pod = firstPresent(labels, "pod", "pod_name", "kubernetes_pod_name");
         String workload = extractWorkload(pod);
+        String alertName = valueOr(labels.get("alertname"), "UnknownAlert"); // ✅ alertName 먼저 추출
+        
+        // ✅ fallback으로 pod이 아닌 'workload'를 넘겨야 컨테이너 이름과 일치합니다!
+        String container = getContainerOrFallback(
+            alertName,
+            firstPresent(labels, "container", "container_name"),
+            workload 
+        );
 
         return new AlertContext(
                 valueOr(alert.fingerprint(), "unknown"),
-                valueOr(labels.get("alertname"), "UnknownAlert"),
+                alertName,
                 valueOr(labels.get("namespace"), DEFAULT_NAMESPACE),
                 pod,
-                workload,  // ← 추가!
-                firstPresent(labels, "container", "container_name"),
+                workload,
+                container,
                 valueOr(labels.get("severity"), "warning"),
                 valueOr(annotations.get("summary"), ""),
                 valueOr(annotations.get("description"), ""),
@@ -31,10 +39,6 @@ public class AlertContextFactory {
         );
     }
 
-    /**
-     * Pod 이름에서 workload 추출
-     * chat-service-777fb46bd4-6p9x4 → chat-service
-     */
     private static String extractWorkload(String pod) {
         if (pod == null || pod.isBlank()) {
             return "";
@@ -56,6 +60,25 @@ public class AlertContextFactory {
         }
         
         return pod;
+    }
+
+    // ✅ 세 번째 인자를 fallbackName(workload)으로 받습니다.
+    private static String getContainerOrFallback(String alertName, String container, String fallbackName) {
+        // Pod-level alert는 무조건 fallback(workload)으로
+        if (alertName.contains("PodNotReady") || 
+            alertName.contains("CrashLooping") || 
+            alertName.contains("RestartRate")) {
+            return fallbackName;
+        }
+        
+        // 값이 없거나 쓰레기값(kube-state-metrics)이면 fallback(workload)으로
+        if (container == null || 
+            container.isBlank() || 
+            "kube-state-metrics".equals(container)) {
+            return fallbackName;
+        }
+        
+        return container;
     }
 
     private static Map<String, String> nullToEmpty(Map<String, String> value) {
