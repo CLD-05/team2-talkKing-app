@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Redis 기반 Alert 스로틀링 서비스
- * 같은 alert이 10분 내에 반복되면 Slack 알림을 차단합니다.
+ * 같은 alert이 30분 내에 반복되면 Slack 알림을 차단합니다.
  * alertName + namespace + workload + container 기반으로 중복 제거하므로
  * Pod이 바뀌어도 같은 workload 장애로 인식합니다.
  */
@@ -19,7 +19,7 @@ public class AlertThrottleServiceRedis {
 
     private final StringRedisTemplate redisTemplate;
     
-    private static final long THROTTLE_MINUTES = 10;
+    private static final long THROTTLE_MINUTES = 30;
     private static final String KEY_PREFIX = "alert:throttle:";
 
     /**
