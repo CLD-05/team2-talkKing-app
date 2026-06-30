@@ -16,7 +16,7 @@ class AlertContextFactoryTest {
                 Map.of(
                         "alertname", "PodCrashLooping",
                         "namespace", "talkking",
-                        "pod", "chat-abc",
+                        "pod", "chat-7854fd799b-12345",
                         "container", "chat",
                         "severity", "critical"
                 ),
@@ -31,7 +31,7 @@ class AlertContextFactoryTest {
 
         assertThat(context.alertName()).isEqualTo("PodCrashLooping");
         assertThat(context.namespace()).isEqualTo("talkking");
-        assertThat(context.pod()).isEqualTo("chat-abc");
+        assertThat(context.pod()).isEqualTo("chat-7854fd799b-12345");
         assertThat(context.container()).isEqualTo("chat");
         assertThat(context.severity()).isEqualTo("critical");
         assertThat(context.summary()).isEqualTo("Chat pod is crashing");
