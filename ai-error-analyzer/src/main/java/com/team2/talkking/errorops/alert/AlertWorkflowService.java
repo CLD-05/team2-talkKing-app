@@ -124,6 +124,8 @@ public class AlertWorkflowService {
                     "직접 K8s 로그와 이벤트를 확인해 주세요.";
             aiSuccess = false;
         }
+        
+        boolean slackSent = false;
 
         boolean shouldNotify = alertThrottleService.checkAndRecordThrottle(
             context.alertName(), 
