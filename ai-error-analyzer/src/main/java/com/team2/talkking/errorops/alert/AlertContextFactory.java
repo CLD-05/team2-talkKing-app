@@ -15,6 +15,9 @@ public class AlertContextFactory {
         
         String pod = firstPresent(labels, "pod", "pod_name", "kubernetes_pod_name");
         String workload = extractWorkload(pod);
+        String container = getContainerOrFallback(
+            firstPresent(labels, "container", "container_name"),
+            pod);
 
         return new AlertContext(
                 valueOr(alert.fingerprint(), "unknown"),
@@ -22,7 +25,7 @@ public class AlertContextFactory {
                 valueOr(labels.get("namespace"), DEFAULT_NAMESPACE),
                 pod,
                 workload,  // ← 추가!
-                firstPresent(labels, "container", "container_name"),
+                container,
                 valueOr(labels.get("severity"), "warning"),
                 valueOr(annotations.get("summary"), ""),
                 valueOr(annotations.get("description"), ""),
@@ -56,6 +59,13 @@ public class AlertContextFactory {
         }
         
         return pod;
+    }
+
+    private static String getContainerOrFallback(String container, String pod) {
+        if (container == null || container.isBlank()) {
+            return pod;  // ✅ 빈값이면 pod 이름으로
+        }
+        return container;
     }
 
     private static Map<String, String> nullToEmpty(Map<String, String> value) {

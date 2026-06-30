@@ -124,36 +124,26 @@ public class AlertWorkflowService {
                     "직접 K8s 로그와 이벤트를 확인해 주세요.";
             aiSuccess = false;
         }
+        
+        boolean slackSent = false;
 
-        boolean shouldNotify = alertThrottleService.canNotify(
+        boolean shouldNotify = alertThrottleService.checkAndRecordThrottle(
             context.alertName(), 
             context.namespace(), 
             context.workload(),
             context.container()
         );
-        
-        log.debug("Alert {}:{}:{}:{} shouldNotify: {}", 
-            context.alertName(), context.namespace(), context.workload(), 
-            context.container(), shouldNotify);
-
-        boolean slackSent = false;
 
         if (shouldNotify) {
             String alertType = AiAnalyzerMetrics.normalizeAlertType(context.alertName(), context.severity());
             String severity = AiAnalyzerMetrics.normalizeSeverity(context.severity());
             metrics.recordAlert(alertType, severity);
+            
             try {
-                // 런북 본문 한 통만 깔끔하게 전달 (감사와 가공은 SlackNotifier 내부에서 독립 처리)
+                // 런북 본문 한 통만 깔끔하게 전달
                 slackSent = slackNotifier.send(context, runbook);
                 
                 if (slackSent) {
-                    // ✅ 같은 키로 Redis에 기록
-                    alertThrottleService.recordNotification(
-                        context.alertName(), 
-                        context.namespace(), 
-                        context.workload(),
-                        context.container()
-                    );
                     log.info("Slack notification sent for alert: {}", fingerprint);
                 } else {
                     log.warn("Failed to send Slack notification for alert: {}", fingerprint);
@@ -161,8 +151,10 @@ public class AlertWorkflowService {
             } catch (Exception e) {
                 log.error("Error sending Slack notification for alert: {}", fingerprint, e);
             }
+            // ❌ recordNotification 호출 제거! (checkAndRecordThrottle에서 이미 처리됨)
+            
         } else {
-            log.info("Alert {}:{}:{}:{} throttled - less than 10 minutes since last notification", 
+            log.info("Alert {}:{}:{}:{} throttled - less than 30 minutes since last notification",  // ✅ 30분으로 변경
                 context.alertName(), context.namespace(), context.workload(), 
                 context.container());
         }
