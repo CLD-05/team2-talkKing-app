@@ -38,6 +38,48 @@ flowchart LR
 
 동일한 Alert fingerprint는 Redis를 이용해 30분 동안 중복 처리를 제한합니다. 분석 결과와 처리 이력은 PostgreSQL Alert History DB에 저장하고 Micrometer 지표는 Prometheus에 노출합니다.
 
+## 저장소 구성과 관계
+
+ErrorOps는 애플리케이션 코드, Kubernetes 선언, AWS 인프라, 로컬 AI 실행기를 각각 독립된 저장소로 분리합니다.
+
+| 저장소 | 책임 범위 | 이 저장소와의 관계 |
+| --- | --- | --- |
+| [`team2-talkKing-app`](https://github.com/CLD-05/team2-talkKing-app) | Chat, Notification, AI Analyzer 소스와 Docker 이미지 빌드 | 현재 저장소. 코드 변경 시 GitHub Actions가 이미지를 빌드해 ECR에 Push합니다. |
+| [`team2-talkKing-config`](https://github.com/CLD-05/team2-talkKing-config) | Kubernetes Manifest, Kustomize Overlay, ArgoCD Application, Prometheus Rule | App CI가 새 이미지 태그를 반영하고 ArgoCD가 변경을 EKS에 동기화합니다. AI Analyzer의 Deployment, RBAC, Secret 참조도 관리합니다. |
+| [`team2-talkKing-infra`](https://github.com/CLD-05/team2-talkKing-infra) | Terraform 기반 VPC, EKS, RDS, Redis, ECR, IAM, Route 53 및 Platform Addon | 애플리케이션이 실행될 AWS 기반 환경과 IRSA, 보안 그룹, 데이터 저장소 및 모니터링 플랫폼을 제공합니다. |
+| `team2-talkKing-codex-runner` | Slack 승인 감시, 프롬프트 다운로드, Safety Guard, Codex CLI 실행 및 실행 로그 저장 | AI Analyzer가 Slack에 올린 작업을 승인 후 실행하고, App/Config/Infra 중 필요한 저장소에 브랜치와 PR을 생성합니다. |
+
+### 배포 관계
+
+```mermaid
+flowchart LR
+    DEV[Developer] --> APP[App Repository]
+    APP --> CI[GitHub Actions]
+    CI --> ECR[Amazon ECR]
+    CI --> CFG[Config Repository 이미지 태그 변경]
+    CFG --> ARGO[ArgoCD]
+    ARGO --> EKS[Amazon EKS]
+    INFRA[Infra Repository] --> AWS[AWS Infrastructure]
+    AWS --> EKS
+```
+
+App 저장소는 실행 가능한 이미지를 만들고, Config 저장소는 어떤 버전을 어떤 Kubernetes 환경에 배포할지 선언합니다. Infra 저장소는 해당 워크로드가 실행될 AWS 자원을 만들며, ArgoCD는 Config 저장소의 선언과 EKS 실제 상태를 지속적으로 동기화합니다.
+
+### 장애 수정 자동화 관계
+
+```mermaid
+flowchart LR
+    EKS[장애 발생] --> ANA[App Repository의 AI Analyzer]
+    ANA --> SLACK[Slack 작업 파일]
+    SLACK --> APPROVE{사람의 승인}
+    APPROVE --> RUNNER[Codex Runner]
+    RUNNER --> APPPR[App PR]
+    RUNNER --> CFGPR[Config PR]
+    RUNNER --> INFRAPR[Infra PR]
+```
+
+Codex Runner는 장애 원인에 따라 저장소를 선택합니다. 애플리케이션 로직은 App, Deployment와 환경변수 선언은 Config, AWS 자원이나 IAM 및 네트워크 문제는 Infra에 수정 PR을 생성합니다. 여러 저장소를 무조건 변경하지 않고 장애 해결에 필요한 최소 범위만 수정하도록 설계했습니다.
+
 ## 주요 기술
 
 - Java 17, Spring Boot 3.5
@@ -50,7 +92,7 @@ flowchart LR
 - Gemini API, Slack API
 - Docker, GitHub Actions, Amazon ECR
 
-## 저장소 구조
+## 디렉터리 구조
 
 ```text
 team2-talkKing-app/
@@ -72,20 +114,15 @@ team2-talkKing-app/
 - Redis
 - RabbitMQ
 
-### Chat 및 Notification 빌드
+### Chat 및 Notification
 
 ```powershell
 .\mvnw.cmd clean test
 .\mvnw.cmd clean package
-```
-
-RabbitMQ와 애플리케이션을 Docker Compose로 실행할 수 있습니다.
-
-```powershell
 docker compose up --build
 ```
 
-Chat Service는 MySQL과 Redis 연결 정보가 추가로 필요합니다.
+Chat Service를 직접 실행하려면 연결 정보를 지정합니다.
 
 ```powershell
 $env:SPRING_DATASOURCE_URL="jdbc:mysql://localhost:3306/talkking"
@@ -96,7 +133,7 @@ $env:SPRING_RABBITMQ_HOST="localhost"
 .\mvnw.cmd -pl talkking-chat spring-boot:run
 ```
 
-### AI Error Analyzer 실행
+### AI Error Analyzer
 
 ```powershell
 $env:ALERT_DATASOURCE_URL="jdbc:postgresql://localhost:5432/errorops"
@@ -105,7 +142,6 @@ $env:ALERT_DB_PASSWORD="password"
 $env:REDIS_HOST="localhost"
 $env:GEMINI_API_KEY="your-api-key"
 $env:GEMINI_MODEL="gemini-2.5-flash"
-
 .\mvnw.cmd -f ai-error-analyzer\pom.xml spring-boot:run
 ```
 
@@ -134,12 +170,6 @@ SLACK_CODEX_CHANNEL_ID
 | AI Analyzer | `/api/v1/alerts` | Alertmanager Webhook 수신 |
 | 공통 | `/actuator/health` | 애플리케이션 상태 확인 |
 | 공통 | `/actuator/prometheus` | Prometheus 메트릭 |
-
-## 관련 저장소
-
-- [Application](https://github.com/CLD-05/team2-talkKing-app)
-- [Kubernetes Config](https://github.com/CLD-05/team2-talkKing-config)
-- [Infrastructure](https://github.com/CLD-05/team2-talkKing-infra)
 
 ## 안전 원칙
 
