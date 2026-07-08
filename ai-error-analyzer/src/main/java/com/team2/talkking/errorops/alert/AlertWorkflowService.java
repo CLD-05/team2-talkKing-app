@@ -1,0 +1,184 @@
+package com.team2.talkking.errorops.alert;
+
+import com.team2.talkking.errorops.gemini.GeminiRunbookClient;
+import com.team2.talkking.errorops.history.AlertHistoryService;
+import com.team2.talkking.errorops.kubernetes.KubernetesDiagnosticService;
+import com.team2.talkking.errorops.kubernetes.KubernetesDiagnostics;
+import com.team2.talkking.errorops.slack.SlackNotifier;
+import java.util.List;
+import java.util.Map;
+import org.springframework.stereotype.Service;
+import lombok.extern.slf4j.Slf4j;
+import com.team2.talkking.errorops.metrics.AiAnalyzerMetrics;
+
+@Slf4j
+@Service
+public class AlertWorkflowService {
+
+    private final AlertContextFactory alertContextFactory;
+    private final KubernetesDiagnosticService kubernetesDiagnosticService;
+    private final GeminiRunbookClient geminiRunbookClient;
+    private final SlackNotifier slackNotifier;
+    private final AlertThrottleServiceRedis alertThrottleService;
+    private final AlertHistoryService alertHistoryService;
+    private final AiAnalyzerMetrics metrics;
+
+    public AlertWorkflowService(
+            AlertContextFactory alertContextFactory,
+            KubernetesDiagnosticService kubernetesDiagnosticService,
+            GeminiRunbookClient geminiRunbookClient,
+            SlackNotifier slackNotifier,
+            AlertThrottleServiceRedis alertThrottleService,
+            AlertHistoryService alertHistoryService,
+            AiAnalyzerMetrics metrics
+    ) {
+        this.alertContextFactory = alertContextFactory;
+        this.kubernetesDiagnosticService = kubernetesDiagnosticService;
+        this.geminiRunbookClient = geminiRunbookClient;
+        this.slackNotifier = slackNotifier;
+        this.alertThrottleService = alertThrottleService;
+        this.alertHistoryService = alertHistoryService;
+        this.metrics = metrics;
+    }
+
+    public AlertAnalysisResponse handle(AlertmanagerWebhookRequest request) {
+        metrics.recordCall();
+        List<AlertmanagerWebhookRequest.Alert> alerts = request.alerts() == null ? List.of() : request.alerts();
+        List<AlertAnalysisResponse.AlertResult> results = alerts.stream()
+                .filter(alert -> !"resolved".equalsIgnoreCase(alert.status()))
+                .filter(this::isActionableCodexAlert)
+                .map(this::analyze)
+                .toList();
+
+        return new AlertAnalysisResponse(alerts.size(), results.size(), results);
+    }
+
+    private boolean isActionableCodexAlert(AlertmanagerWebhookRequest.Alert alert) {
+        Map<String, String> labels = alert.labels() == null ? Map.of() : alert.labels();
+        String alertName = labels.getOrDefault("alertname", "");
+        String severity = labels.getOrDefault("severity", "");
+        String namespace = labels.getOrDefault("namespace", "");
+        String pod = firstPresent(labels, "pod", "pod_name", "kubernetes_pod_name");
+
+        if ("Watchdog".equalsIgnoreCase(alertName) || "InfoInhibitor".equalsIgnoreCase(alertName)) {
+            log.info("Skipping non-actionable platform alert: {}", alertName);
+            return false;
+        }
+
+        if (!"warning".equalsIgnoreCase(severity) && !"critical".equalsIgnoreCase(severity)) {
+            log.info("Skipping alert with non-actionable severity - alertname: {}, severity: {}", alertName, severity);
+            return false;
+        }
+
+        if (!namespace.startsWith("talkking-")) {
+            log.info("Skipping alert outside TalkKing namespaces - alertname: {}, namespace: {}", alertName, namespace);
+            return false;
+        }
+
+        if (pod.isBlank()) {
+            log.info("Skipping alert without pod label - alertname: {}, namespace: {}", alertName, namespace);
+            return false;
+        }
+
+        return true;
+    }
+
+    private String firstPresent(Map<String, String> values, String... keys) {
+        for (String key : keys) {
+            String value = values.get(key);
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private AlertAnalysisResponse.AlertResult analyze(AlertmanagerWebhookRequest.Alert alert) {
+        long startTime = System.currentTimeMillis();
+        AlertContext context = alertContextFactory.from(alert);
+        String fingerprint = context.fingerprint();
+        
+        log.info("Analyzing alert - fingerprint: {}, alertname: {}, workload: {}, pod: {}", 
+                fingerprint, context.alertName(), context.workload(), context.pod());
+        
+        // ✅ Kubernetes 진단 (실패해도 fallback)
+        KubernetesDiagnostics diagnostics;
+        try {
+            diagnostics = kubernetesDiagnosticService.collect(context);
+        } catch (Exception e) {
+            log.error("Kubernetes diagnostic collection failed for alert: {}", context.alertName(), e);
+            diagnostics = KubernetesDiagnostics.unavailable(
+                "Kubernetes diagnostic collection failed: " + e.getMessage()
+            );
+        }
+
+        // ✅ AI 서버가 뻗어도 알람은 가야 하므로 try-catch 추가
+        String runbook;
+        boolean aiSuccess = false;
+        try {
+            runbook = geminiRunbookClient.generateRunbook(context, diagnostics);
+            aiSuccess = true;
+        } catch (Exception e) {
+            log.error("Gemini AI Runbook generation failed for alert: {}", context.alertName(), e);
+            runbook = "⚠️ AI 분석을 일시적으로 가져올 수 없습니다. (에러: " + e.getMessage() + ")\n" +
+                    "직접 K8s 로그와 이벤트를 확인해 주세요.";
+            aiSuccess = false;
+        }
+        
+        boolean slackSent = false;
+
+        boolean shouldNotify = alertThrottleService.checkAndRecordThrottle(
+            context.alertName(), 
+            context.namespace(), 
+            context.workload(),
+            context.container()
+        );
+
+        if (shouldNotify) {
+            String alertType = AiAnalyzerMetrics.normalizeAlertType(context.alertName(), context.severity());
+            String severity = AiAnalyzerMetrics.normalizeSeverity(context.severity());
+            metrics.recordAlert(alertType, severity);
+            
+            try {
+                // 런북 본문 한 통만 깔끔하게 전달
+                slackSent = slackNotifier.send(context, runbook);
+                
+                if (slackSent) {
+                    log.info("Slack notification sent for alert: {}", fingerprint);
+                } else {
+                    log.warn("Failed to send Slack notification for alert: {}", fingerprint);
+                }
+            } catch (Exception e) {
+                log.error("Error sending Slack notification for alert: {}", fingerprint, e);
+            }
+            // ❌ recordNotification 호출 제거! (checkAndRecordThrottle에서 이미 처리됨)
+            
+        } else {
+            log.info("Alert {}:{}:{}:{} throttled - less than 30 minutes since last notification",  // ✅ 30분으로 변경
+                context.alertName(), context.namespace(), context.workload(), 
+                context.container());
+        }
+
+        // ✅ 히스토리 저장 (실패해도 무시) -> 최종 결과가 DB 파티션에도 이쁘게 영속화됩니다.
+        try {
+            alertHistoryService.save(context, diagnostics, runbook, slackSent);
+        } catch (Exception e) {
+            log.error("Failed to save alert history for alert: {}", context.alertName(), e);
+        }
+
+         // 응답시간 + 성공/실패 기록
+        long duration = System.currentTimeMillis() - startTime;
+        metrics.recordResponseTime(duration);
+        metrics.recordResult(aiSuccess);
+
+        return new AlertAnalysisResponse.AlertResult(
+                fingerprint,
+                context.alertName(),
+                context.namespace(),
+                context.pod(),
+                context.severity(),
+                slackSent,
+                runbook
+        );
+    }
+}

@@ -1,0 +1,77 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+  # 💡 쿠버네티스 프로브(Actuator) 연동을 위한 엔드포인트 개방 설정 추가
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "prometheus,health"
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      # 수집되는 모든 데이터에 애플리케이션 이름을 꼬리표(Tag)로 강제 매핑합니다.
+      application: ${spring.application.name}
+      
+spring:
+  profiles:
+    active: dev # 아무 설정 없이 켜면 기본 주파수는 dev
+
+---
+# 🚀 [운영/운영 인프라 공통 대응 백본]
+# 1층(공통)에 설정해 둔 기본값들이 'dev' 상태일 때 자동으로 작동합니다.
+spring:
+  # 🗄️ MySQL 데이터베이스 연동 및 JPA 영속성 설정
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 🎯 [오류 수정]: ConfigMap의 SPRING_DATASOURCE_URL 변수명과 일치하도록 교정했습니다.
+    # 환경 변수가 없으면(로컬 dev) 콜론(:) 뒤의 localhost 주소를 바라봅니다.
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/talkking?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul}
+    username: ${SPRING_DATASOURCE_USERNAME:root} 
+    password: ${SPRING_DATASOURCE_PASSWORD:password}
+
+  jpa:
+    hibernate:
+      ddl-auto: update # 💻 dev 환경을 고려해 우선 update로 세팅 (prod 구역에서 validate로 덮어씁니다)
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+
+  # 🐇 분산 메시징 서버 RabbitMQ 인프라 세팅
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:rabbitmq-service} # 🎯 ConfigMap의 명칭(SPRING_RABBITMQ_HOST)과 싱크 맞춤
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:talkking}
+    password: ${RABBITMQ_PASSWORD:guest}
+
+  # 🔴 [오류 수정] 고성능 인메모리 데이터 스토어 Redis 인프라 세팅
+  data:
+    redis:
+      # 🎯 ConfigMap에 등록된 SPRING_DATA_REDIS_HOST 및 PORT 변수명과 일치하도록 교정했습니다.
+      host: ${SPRING_DATA_REDIS_HOST:localhost} 
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      
+logging:
+  level:
+    root: INFO
+    com.team2.talkking: DEBUG # 로컬 개발용 로그 레벨 업
+
+---
+# 🚀 오직 쿠버네티스 프로덕션(prod) 환경에서만 발동되는 차단벽
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  jpa:
+    hibernate:
+      ddl-auto: validate # 🚀 운영 환경에서는 안전하게 테이블 검증만 수행
+    show-sql: false

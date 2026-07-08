@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>TalkKing - 로그인 및 회원가입</title>
+    <style>
+        body { 
+            font-family: 'Malgun Gothic', Arial, sans-serif; 
+            background: #F8F9FD; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            margin: 0; 
+        }
+        .container { 
+            background: white; 
+            padding: 40px 35px; 
+            border-radius: 16px; 
+            box-shadow: 0 10px 30px rgba(95, 75, 139, 0.08); 
+            width: 360px; 
+            text-align: center;
+        }
+        .logo-area {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 30px;
+        }
+        .logo-icon {
+            color: #5C4BEA; 
+            font-size: 28px;
+        }
+        .logo-text {
+            font-size: 26px;
+            font-weight: bold;
+            color: #5C4BEA;
+            letter-spacing: -0.5px;
+        }
+        input { 
+            width: 100%; 
+            padding: 14px; 
+            margin: 10px 0; 
+            border: 1px solid #E2E8F0; 
+            border-radius: 10px; 
+            box-sizing: border-box; 
+            font-size: 15px;
+            background-color: #FAFAFA;
+            transition: all 0.2s ease;
+        }
+        input:focus {
+            outline: none;
+            border-color: #5C4BEA;
+            background-color: #FFF;
+            box-shadow: 0 0 0 3px rgba(92, 75, 234, 0.1);
+        }
+        button { 
+            width: 100%; 
+            padding: 14px; 
+            background: #5C4BEA; 
+            border: none; 
+            color: white; 
+            border-radius: 10px; 
+            cursor: pointer; 
+            font-size: 16px; 
+            font-weight: bold;
+            margin-top: 15px; 
+            transition: background 0.2s ease;
+            box-shadow: 0 4px 12px rgba(92, 75, 234, 0.2);
+        }
+        button:hover { 
+            background: #4A3BC7; 
+        }
+        .switch { 
+            text-align: center; 
+            margin-top: 20px; 
+            font-size: 14px; 
+            color: #718096; 
+            cursor: pointer; 
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+        .switch:hover { 
+            color: #5C4BEA;
+            text-decoration: underline; 
+        }
+        .token-box { 
+            margin-top: 20px; 
+            padding: 10px; 
+            background: #F7FAFC; 
+            border-radius: 8px; 
+            word-break: break-all; 
+            font-size: 12px; 
+            display: none; 
+            color: #4A5568; 
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="logo-area">
+        <span class="logo-icon">💬</span>
+        <span class="logo-text" id="form-title">talkking</span>
+    </div>
+    
+    <input type="text" id="username" placeholder="아이디 (Username)">
+    <input type="password" id="password" placeholder="비밀번호 (Password)">
+    <input type="text" id="nickname" placeholder="닉네임 (회원가입 시에만 입력)" style="display: none;">
+    
+    <button id="submit-btn" onclick="handleSubmit()">로그인</button>
+    <div class="switch" id="switch-mode" onclick="toggleMode()">아직 계정이 없으신가요? 회원가입하기</div>
+    
+    <div class="token-box" id="token-box"></div>
+</div>
+
+<script>
+    let isSignUpMode = false;
+
+    // 🧹 진입 시 기존 LocalStorage 및 쿠키 내 토큰 잔재들 완전히 리셋
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    document.cookie = "accessToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    document.cookie = "refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+
+    function toggleMode() {
+        isSignUpMode = !isSignUpMode;
+        document.getElementById('form-title').innerText = isSignUpMode ? '회원가입' : 'talkking';
+        document.getElementById('submit-btn').innerText = isSignUpMode ? '회원가입 완료' : '로그인';
+        document.getElementById('switch-mode').innerText = isSignUpMode ? '이미 계정이 있나요? 로그인하기' : '아직 계정이 없으신가요? 회원가입하기';
+        document.getElementById('nickname').style.display = isSignUpMode ? 'block' : 'none';
+    }
+
+    async function handleSubmit() {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const nickname = document.getElementById('nickname').value;
+
+        if (!username || !password) {
+            alert('아이디와 비밀번호를 입력해주세요.');
+            return;
+        }
+
+        const url = isSignUpMode ? '/api/users/signup' : '/api/users/login';
+        const bodyData = isSignUpMode ? { username, password, nickname } : { username, password };
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(bodyData)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || '요청 실패');
+            }
+
+            if (isSignUpMode) {
+                alert('회원가입 성공! 로그인 모드로 전환합니다.');
+                toggleMode();
+            } else {
+                const responseData = await response.json();
+                
+                const accessToken = responseData.accessToken;
+                const refreshToken = responseData.refreshToken;
+
+                if (!accessToken || !refreshToken) {
+                    throw new Error("서버로부터 정상적인 토큰 쌍을 받지 못했습니다.");
+                }
+
+                alert('로그인 성공! 메인 화면으로 이동합니다.');
+                
+                // 💾 1. LocalStorage 동시 백업 저장
+                localStorage.setItem('accessToken', accessToken);
+                localStorage.setItem('refreshToken', refreshToken);
+
+                // 💾 2. 🔥 [핵심 보완] main.html 파서 엔진이 인식할 수 있도록 브라우저 쿠키 영역에도 명시적으로 저장합니다.
+                document.cookie = `accessToken=${accessToken}; path=/; max-age=1800;`; // 30분
+                document.cookie = `refreshToken=${refreshToken}; path=/; max-age=1209600;`; // 14일
+
+                // 🎯 리다이렉트 통제권을 넘겨 메인 대시보드로 이동시킵니다.
+                setTimeout(() => {
+                    location.href = '/main';
+                }, 500);
+            }
+        } catch (error) {
+            alert('에러 발생: ' + error.message);
+        }
+    }
+</script>
+</body>
+</html>

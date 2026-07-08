@@ -1,0 +1,30 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+  data:
+    redis:
+      host: 127.0.0.1        # localhost 대신 명시적으로
+      port: 6379
+      timeout: 1000ms        # ✅ timeout 설정 (연결 실패 시 빨리 포기)
+      lettuce:
+        shutdown-timeout: 0ms # ✅ 빠른 종료
+
+errorops:
+  gemini:
+    api-key: mock_key
+  slack:
+    critical-webhook-url: http://localhost
+    warning-webhook-url: http://localhost
+    info-webhook-url: http://localhost
+
+# ✅ 선택사항 (콘솔 접근 가능)
+  h2:
+    console:
+      enabled: false  # GitHub Actions에서는 불필요

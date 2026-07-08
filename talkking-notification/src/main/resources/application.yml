@@ -1,0 +1,37 @@
+server:
+  port: 8081 # 🎯 이사 완료한 8081 포트
+
+spring:
+  profiles:
+    active: dev
+
+---
+# 💻 dev 기본 인프라 대응 구역 (환경 변수 없으면 로컬 localhost 매핑)
+spring:
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        concurrency: 3
+        max-concurrency: 10
+        acknowledge-mode: auto
+
+logging:
+  level:
+    root: INFO
+    com.team2.talkking: DEBUG
+
+---
+# 🚀 쿠버네티스 프로덕션(prod) 차단벽
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+logging:
+  level:
+    root: INFO
+    com.team2.talkking: INFO # 운영 환경에서는 로그 양을 줄이기 위해 INFO로 다운

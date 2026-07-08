@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>TalkKing - 메인 대시보드</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    
+    <link rel="stylesheet" href="css/style.css">
+    
+    <script src="js/dashboard.js" defer></script>
+</head>
+<body>
+
+<div class="dashboard">
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div class="sidebar-brand">
+                    <i class="fa-solid fa-comments"></i> talkking
+                </div>
+                <button class="btn btn-secondary" onclick="logout()" style="font-size: 11px; padding: 6px 10px; border-radius: 6px;">
+                    <i class="fa-solid fa-right-from-bracket"></i> 로그아웃
+                </button>
+            </div>
+            <button class="btn" onclick="openCreateModal()" style="width: 100%; padding: 12px;">
+                <i class="fa-solid fa-plus"></i> 새 채팅방 만들기
+            </button>
+        </div>
+        <div class="room-list" id="room-list">
+            <p style="text-align: center; color: #aaa; margin-top: 40px; font-size: 14px;">참여 중인 방이 없습니다.</p>
+        </div>
+    </div>
+    
+    <div class="chat-main-body" id="chat-main-body">
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; color: var(--text-muted); gap: 12px;">
+            <i class="fa-solid fa-message" style="font-size: 48px; color: #cbd5e1;"></i>
+            <h3 style="color: var(--text-main); font-weight: 700;">💬 TalkKing 대시보드</h3>
+            <p style="font-size: 14px;">대화방을 클릭하거나 동료를 초대해 톡을 나눠보세요!</p>
+        </div>
+    </div>
+</div>
+
+<div class="modal" id="user-action-modal">
+    <div class="modal-content">
+        <div class="modal-header" id="modal-title">새 그룹 채팅방 개설</div>
+        <input type="text" id="new-room-title" class="room-title-input" placeholder="채팅방 이름을 입력하세요" style="margin-bottom: 16px; width: 100%;">
+        <div class="search-box">
+            <input type="text" id="user-search-keyword" placeholder="아이디 또는 닉네임 검색">
+            <button class="btn" onclick="searchUsers()"><i class="fa-solid fa-magnifying-glass"></i> 검색</button>
+        </div>
+        <div class="search-results" id="search-results">
+            <p style="text-align: center; color: #aaa; margin-top: 30px; font-size: 13px;">검색어를 입력해 주세요.</p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+            <button class="btn" id="modal-submit-btn" onclick="submitModalAction()">확인</button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

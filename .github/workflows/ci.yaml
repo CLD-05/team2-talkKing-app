@@ -1,0 +1,209 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com
+  ECR_REPOSITORY_CHAT: team2-talkking/chat-service
+  ECR_REPOSITORY_NOTIFICATION: team2-talkking/notification-service
+  ECR_REPOSITORY_ANALYZER: team2-talkking/ai-error-analyzer
+  
+jobs:
+  # ── chat 모듈 ──────────────────────────────
+  build-chat:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build and test (chat)
+        working-directory: talkking-chat
+        run: mvn package
+
+  # ── notification 모듈 ──────────────────────
+  build-notification:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build and test (notification)
+        working-directory: talkking-notification
+        run: mvn package
+
+  # ── ai-error-analyzer 모듈 ──────────────────────────────
+  build-analyzer:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build and test (analyzer)
+        working-directory: ai-error-analyzer
+        run: mvn package
+
+  # ── Docker 이미지 빌드 및 ECR 푸시 ──────────────────────
+  push-to-ecr:
+    needs: [build-chat, build-notification, build-analyzer]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/team2-talkking-dev-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push chat image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./talkking-chat/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_CHAT }}:${{ github.sha }}
+          build-args: |
+            BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push notification image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./talkking-notification/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_NOTIFICATION }}:${{ github.sha }}
+          build-args: |
+            BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push analyzer image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./ai-error-analyzer/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_ANALYZER }}:${{ github.sha }}
+          build-args: |
+            BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            GIT_SHA=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Image pushed successfully
+        run: |
+          echo "Chat image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_CHAT }}:${{ github.sha }}"
+          echo "Notification image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_NOTIFICATION }}:${{ github.sha }}"
+          echo "Analyzer image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_ANALYZER }}:${{ github.sha }}"
+
+ # ── GitOps: Config Repository 업데이트 ──────────────────────
+  update-config:
+    needs: [push-to-ecr]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev' && success()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout config repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/team2-talkKing-config
+          token: ${{ secrets.CONFIG_REPO_TOKEN }}
+
+      - name: Update image tags for dev and prod
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          ECR_REGISTRY: ${{ env.ECR_REGISTRY }}
+          ECR_REPOSITORY_CHAT: ${{ env.ECR_REPOSITORY_CHAT }}
+          ECR_REPOSITORY_NOTIFICATION: ${{ env.ECR_REPOSITORY_NOTIFICATION }}
+          ECR_REPOSITORY_ANALYZER: ${{ env.ECR_REPOSITORY_ANALYZER }}
+        run: |
+          set -e  # 에러 발생 시 즉시 중단
+
+          # 1. kustomize 설치
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+          
+          # 2. 반복문을 통해 dev, prod 순차 업데이트
+          for ENV in dev prod; do
+            echo "Updating kustomization.yaml for $ENV..."
+            cd overlays/$ENV
+            kustomize edit set image \
+              "talkking-chat=$ECR_REGISTRY/$ECR_REPOSITORY_CHAT:$IMAGE_TAG" \
+              "talkking-notification=$ECR_REGISTRY/$ECR_REPOSITORY_NOTIFICATION:$IMAGE_TAG" \
+              "ai-error-analyzer=$ECR_REGISTRY/$ECR_REPOSITORY_ANALYZER:$IMAGE_TAG"
+            cd ../..
+            echo "Completed for $ENV"
+          done
+
+      - name: Commit and push
+        run: |
+          set -e # 에러 발생 시 즉시 중단
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          if git diff --quiet; then
+            echo "No changes to commit"
+          else
+            git add overlays/dev/kustomization.yaml overlays/prod/kustomization.yaml
+            git commit -m "chore: update image tags to ${{ github.sha }} for dev and prod"
+            git push
+            echo "Config repository updated successfully"
+          fi
